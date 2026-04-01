@@ -71,40 +71,6 @@ const Index = () => {
             </div>
           )}
         </section>
-
-        {/* Tech Stack Section */}
-        <section className="container mx-auto px-6 py-16 relative z-10">
-          <h2 className="font-serif text-3xl font-bold text-primary text-center mb-10">Tech Stack</h2>
-          <div className="glass-card max-w-3xl mx-auto overflow-hidden animate-fade-in-up">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-primary/10">
-                  <th className="text-left px-6 py-4 font-serif text-primary font-semibold">Category</th>
-                  <th className="text-left px-6 py-4 font-serif text-primary font-semibold">Technology</th>
-                </tr>
-              </thead>
-              <tbody className="text-foreground/80">
-                {[
-                  ["Frontend Framework", "React 18 + TypeScript"],
-                  ["Build Tool", "Vite 5"],
-                  ["Styling", "Tailwind CSS 3 + shadcn/ui"],
-                  ["Routing", "React Router DOM"],
-                  ["State / Data Fetching", "TanStack React Query"],
-                  ["AI – Plant Identification", "CNN (Convolutional Neural Network)"],
-                  ["AI – Symptom Analysis", "NLP Model"],
-                  ["Explainable AI", "SHAP / Feature Highlighting"],
-                  ["Regional Mapping", "Climate & Geo-location Logic"],
-                  ["Animations", "CSS Keyframes + Tailwind Animate"],
-                ].map(([category, tech], i) => (
-                  <tr key={i} className="border-b border-primary/5 last:border-0 hover:bg-primary/5 transition-colors">
-                    <td className="px-6 py-3 font-medium">{category}</td>
-                    <td className="px-6 py-3">{tech}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </main>
 
       <Footer />
