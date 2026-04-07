@@ -1,1 +1,7 @@
 project_id = "dansmhqnzbymstycqsgz"
+
+[functions.identify-plant]
+verify_jwt = false
+
+[functions.find-remedy]
+verify_jwt = false
