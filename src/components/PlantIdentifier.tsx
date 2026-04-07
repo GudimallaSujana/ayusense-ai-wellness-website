@@ -1,33 +1,15 @@
 import { useState, useRef } from "react";
-import { Upload, ArrowLeft, Leaf, Loader2 } from "lucide-react";
+import { Upload, ArrowLeft, Leaf, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const mockResult = {
-  plantName: "Tulsi (Holy Basil)",
-  scientificName: "Ocimum tenuiflorum",
-  benefits: [
-    "Boosts immunity and fights infections",
-    "Reduces stress and anxiety (adaptogen)",
-    "Supports respiratory health",
-    "Anti-inflammatory and antioxidant properties",
-  ],
-  remedies: [
-    "Tulsi Tea: Steep 8-10 fresh leaves in hot water for 5 min. Drink 2x daily.",
-    "Cold Relief: Chew 4-5 leaves with honey every morning.",
-    "Skin Care: Paste of leaves applied on acne for 15 minutes.",
-  ],
-  climate: "Tropical and subtropical climates, thrives in warm humid areas",
-  availability: "Widely available across India, Southeast Asia, and can be grown in home gardens",
-  alternatives: ["Peppermint", "Lemon Balm", "Ashwagandha"],
-  confidence: 94,
-  features: ["Serrated leaf edges", "Aromatic oil glands", "Purple-green stem coloring", "Opposite leaf arrangement"],
-};
+import { useToast } from "@/hooks/use-toast";
+import { identifyPlant, type PlantIdentificationResult } from "@/lib/api";
 
 const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<typeof mockResult | null>(null);
+  const [result, setResult] = useState<PlantIdentificationResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -38,12 +20,21 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
     setResult(null);
   };
 
-  const handleIdentify = () => {
+  const handleIdentify = async () => {
+    if (!image) return;
     setLoading(true);
-    setTimeout(() => {
-      setResult(mockResult);
+    try {
+      const data = await identifyPlant(image);
+      setResult(data);
+    } catch (err: any) {
+      toast({
+        title: "Identification Failed",
+        description: err.message || "Could not identify the plant. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setLoading(false);
-    }, 2000);
+    }
   };
 
   return (
@@ -56,7 +47,7 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
       </button>
 
       <h2 className="font-serif text-3xl md:text-4xl font-bold text-primary mb-2">Identify Medicinal Plant</h2>
-      <p className="text-muted-foreground mb-8">Upload a plant image to discover its Ayurvedic benefits.</p>
+      <p className="text-muted-foreground mb-8">Upload a plant image to discover its Ayurvedic benefits powered by AI.</p>
 
       <div className="glass-card p-8">
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
@@ -77,7 +68,7 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
                 Change Image
               </Button>
               <Button onClick={handleIdentify} disabled={loading} className="flex-1 golden-glow bg-primary hover:bg-secondary text-primary-foreground">
-                {loading ? <><Loader2 className="animate-spin mr-2" size={16} /> Analyzing...</> : <><Leaf className="mr-2" size={16} /> Identify Plant</>}
+                {loading ? <><Loader2 className="animate-spin mr-2" size={16} /> Analyzing with AI...</> : <><Leaf className="mr-2" size={16} /> Identify Plant</>}
               </Button>
             </div>
           </div>
@@ -88,12 +79,42 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
         <div className="mt-8 space-y-6 animate-fade-in-up">
           <div className="glass-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-serif text-2xl font-bold text-primary">{result.plantName}</h3>
+              <div>
+                <h3 className="font-serif text-2xl font-bold text-primary">{result.plantName}</h3>
+                <p className="text-muted-foreground italic">{result.scientificName}</p>
+                {result.family && <p className="text-xs text-muted-foreground">Family: {result.family}</p>}
+              </div>
               <span className="text-xs font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
                 {result.confidence}% confidence
               </span>
             </div>
-            <p className="text-muted-foreground italic mb-4">{result.scientificName}</p>
+
+            {/* Ayurvedic Profile */}
+            {result.ayurvedicProfile && (
+              <div className="mb-6 p-4 rounded-lg bg-accent/5 border border-accent/20">
+                <h4 className="font-semibold text-sm text-accent mb-3">🕉️ Ayurvedic Profile (Dravyaguna)</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div><span className="font-medium text-foreground/60">Rasa:</span> <span className="text-foreground/80">{result.ayurvedicProfile.rasa.join(", ")}</span></div>
+                  <div><span className="font-medium text-foreground/60">Guna:</span> <span className="text-foreground/80">{result.ayurvedicProfile.guna.join(", ")}</span></div>
+                  <div><span className="font-medium text-foreground/60">Virya:</span> <span className="text-foreground/80">{result.ayurvedicProfile.virya}</span></div>
+                  <div><span className="font-medium text-foreground/60">Vipaka:</span> <span className="text-foreground/80">{result.ayurvedicProfile.vipaka}</span></div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {result.ayurvedicProfile.doshaEffect.pacifies.map((d, i) => (
+                    <span key={i} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">Pacifies {d}</span>
+                  ))}
+                  {result.ayurvedicProfile.doshaEffect.aggravates.map((d, i) => (
+                    <span key={i} className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full">Aggravates {d}</span>
+                  ))}
+                </div>
+                {result.ayurvedicProfile.prabhav.length > 0 && (
+                  <div className="mt-2">
+                    <span className="text-xs font-medium text-foreground/60">Prabhav: </span>
+                    <span className="text-xs text-foreground/80">{result.ayurvedicProfile.prabhav.join(", ")}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid md:grid-cols-2 gap-6">
               <div>
@@ -121,6 +142,24 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
               </div>
             </div>
 
+            {result.precautions && result.precautions.length > 0 && (
+              <div className="mt-6 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+                <h4 className="font-semibold text-sm text-destructive mb-2 flex items-center gap-1">
+                  <AlertTriangle size={14} /> Precautions
+                </h4>
+                <ul className="space-y-1 text-sm text-foreground/80">
+                  {result.precautions.map((p, i) => <li key={i}>• {p}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {result.traditionalUses && (
+              <div className="mt-6">
+                <h4 className="font-semibold text-sm text-accent mb-1">📜 Traditional Ayurvedic Uses</h4>
+                <p className="text-sm text-foreground/80">{result.traditionalUses}</p>
+              </div>
+            )}
+
             <div className="mt-6">
               <h4 className="font-semibold text-sm text-accent mb-2">🔄 Alternative Plants</h4>
               <div className="flex flex-wrap gap-2">
@@ -133,9 +172,9 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
 
           {/* Explainable AI */}
           <div className="glass-card p-6">
-            <h3 className="font-serif text-xl font-bold text-primary mb-3">🧠 Why This Plant Was Identified</h3>
+            <h3 className="font-serif text-xl font-bold text-primary mb-3">🧠 AI Analysis Explanation</h3>
             <p className="text-sm text-foreground/80 mb-4">
-              The AI model detected key morphological features with <strong>{result.confidence}%</strong> confidence based on leaf structure analysis.
+              {result.whyIdentified || `The AI model detected key morphological features with ${result.confidence}% confidence based on visual analysis.`}
             </p>
             <h4 className="font-semibold text-sm text-accent mb-2">Key Features Detected</h4>
             <div className="flex flex-wrap gap-2">
