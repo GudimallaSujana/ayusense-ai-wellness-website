@@ -25,6 +25,15 @@ export interface PlantIdentificationResult {
   precautions?: string[];
   traditionalUses?: string;
   whyIdentified?: string;
+  description?: string;
+  databaseMatch?: boolean;
+  warning?: string;
+  treatedConditions?: {
+    disease: string;
+    symptoms: string;
+    formulation: string;
+    herbalRemedies: string;
+  }[];
   error?: string;
 }
 
