@@ -77,19 +77,26 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
 
       {result && (
         <div className="mt-8 space-y-6 animate-fade-in-up">
+          {/* Database match indicator */}
+          {result.databaseMatch !== undefined && (
+            <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${result.databaseMatch ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-destructive/10 text-destructive border border-destructive/20'}`}>
+              {result.databaseMatch ? '✅ Verified match from our database of 704+ medicinal herbs' : '⚠️ ' + (result.warning || 'Plant not found in verified database. Results are AI-generated.')}
+            </div>
+          )}
+
           <div className="glass-card p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-serif text-2xl font-bold text-primary">{result.plantName}</h3>
                 <p className="text-muted-foreground italic">{result.scientificName}</p>
                 {result.family && <p className="text-xs text-muted-foreground">Family: {result.family}</p>}
+                {result.description && <p className="text-sm text-foreground/70 mt-2">{result.description}</p>}
               </div>
               <span className="text-xs font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
                 {result.confidence}% confidence
               </span>
             </div>
 
-            {/* Ayurvedic Profile */}
             {result.ayurvedicProfile && (
               <div className="mb-6 p-4 rounded-lg bg-accent/5 border border-accent/20">
                 <h4 className="font-semibold text-sm text-accent mb-3">🕉️ Ayurvedic Profile (Dravyaguna)</h4>
@@ -113,6 +120,22 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
                     <span className="text-xs text-foreground/80">{result.ayurvedicProfile.prabhav.join(", ")}</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Treated Conditions from Database */}
+            {result.treatedConditions && result.treatedConditions.length > 0 && (
+              <div className="mb-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
+                <h4 className="font-semibold text-sm text-primary mb-3">🏥 Conditions This Plant Treats (from Database)</h4>
+                <div className="grid gap-3">
+                  {result.treatedConditions.slice(0, 8).map((tc, i) => (
+                    <div key={i} className="p-3 rounded bg-background/50 border border-border/50">
+                      <p className="font-medium text-sm text-foreground">{tc.disease}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Symptoms: {tc.symptoms}</p>
+                      {tc.formulation && <p className="text-xs text-primary mt-1">💊 {tc.formulation}</p>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -170,7 +193,6 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
             </div>
           </div>
 
-          {/* Explainable AI */}
           <div className="glass-card p-6">
             <h3 className="font-serif text-xl font-bold text-primary mb-3">🧠 AI Analysis Explanation</h3>
             <p className="text-sm text-foreground/80 mb-4">
