@@ -14,13 +14,178 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      diseases: {
+        Row: {
+          activity_levels: string | null
+          age_group: string | null
+          allergies: string | null
+          ayurvedic_herbs: string | null
+          complications: string | null
+          created_at: string
+          cultural_preferences: string | null
+          current_medications: string | null
+          diagnosis: string | null
+          diet_lifestyle: string | null
+          dietary_habits: string | null
+          disease: string
+          doshas: string | null
+          duration: string | null
+          environmental_factors: string | null
+          family_history: string | null
+          formulation: string | null
+          gender: string | null
+          herbal_remedies: string | null
+          hindi_name: string | null
+          id: string
+          marathi_name: string | null
+          medical_history: string | null
+          medical_intervention: string | null
+          occupation: string | null
+          patient_recommendations: string | null
+          prakriti: string | null
+          prevention: string | null
+          prognosis: string | null
+          risk_factors: string | null
+          seasonal_variation: string | null
+          severity: string | null
+          sleep_patterns: string | null
+          stress_levels: string | null
+          symptoms: string | null
+          yoga_therapy: string | null
+        }
+        Insert: {
+          activity_levels?: string | null
+          age_group?: string | null
+          allergies?: string | null
+          ayurvedic_herbs?: string | null
+          complications?: string | null
+          created_at?: string
+          cultural_preferences?: string | null
+          current_medications?: string | null
+          diagnosis?: string | null
+          diet_lifestyle?: string | null
+          dietary_habits?: string | null
+          disease: string
+          doshas?: string | null
+          duration?: string | null
+          environmental_factors?: string | null
+          family_history?: string | null
+          formulation?: string | null
+          gender?: string | null
+          herbal_remedies?: string | null
+          hindi_name?: string | null
+          id?: string
+          marathi_name?: string | null
+          medical_history?: string | null
+          medical_intervention?: string | null
+          occupation?: string | null
+          patient_recommendations?: string | null
+          prakriti?: string | null
+          prevention?: string | null
+          prognosis?: string | null
+          risk_factors?: string | null
+          seasonal_variation?: string | null
+          severity?: string | null
+          sleep_patterns?: string | null
+          stress_levels?: string | null
+          symptoms?: string | null
+          yoga_therapy?: string | null
+        }
+        Update: {
+          activity_levels?: string | null
+          age_group?: string | null
+          allergies?: string | null
+          ayurvedic_herbs?: string | null
+          complications?: string | null
+          created_at?: string
+          cultural_preferences?: string | null
+          current_medications?: string | null
+          diagnosis?: string | null
+          diet_lifestyle?: string | null
+          dietary_habits?: string | null
+          disease?: string
+          doshas?: string | null
+          duration?: string | null
+          environmental_factors?: string | null
+          family_history?: string | null
+          formulation?: string | null
+          gender?: string | null
+          herbal_remedies?: string | null
+          hindi_name?: string | null
+          id?: string
+          marathi_name?: string | null
+          medical_history?: string | null
+          medical_intervention?: string | null
+          occupation?: string | null
+          patient_recommendations?: string | null
+          prakriti?: string | null
+          prevention?: string | null
+          prognosis?: string | null
+          risk_factors?: string | null
+          seasonal_variation?: string | null
+          severity?: string | null
+          sleep_patterns?: string | null
+          stress_levels?: string | null
+          symptoms?: string | null
+          yoga_therapy?: string | null
+        }
+        Relationships: []
+      }
+      herbs: {
+        Row: {
+          aggravate: string[] | null
+          created_at: string
+          guna: string[] | null
+          id: string
+          link: string | null
+          name: string
+          pacify: string[] | null
+          prabhav: string[] | null
+          preview: string | null
+          rasa: string[] | null
+          tridosha: boolean | null
+          vipaka: string | null
+          virya: string | null
+        }
+        Insert: {
+          aggravate?: string[] | null
+          created_at?: string
+          guna?: string[] | null
+          id?: string
+          link?: string | null
+          name: string
+          pacify?: string[] | null
+          prabhav?: string[] | null
+          preview?: string | null
+          rasa?: string[] | null
+          tridosha?: boolean | null
+          vipaka?: string | null
+          virya?: string | null
+        }
+        Update: {
+          aggravate?: string[] | null
+          created_at?: string
+          guna?: string[] | null
+          id?: string
+          link?: string | null
+          name?: string
+          pacify?: string[] | null
+          prabhav?: string[] | null
+          preview?: string | null
+          rasa?: string[] | null
+          tridosha?: boolean | null
+          vipaka?: string | null
+          virya?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       [_ in never]: never
