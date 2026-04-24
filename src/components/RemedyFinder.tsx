@@ -31,16 +31,20 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
   const [location, setLocation] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<RemedyResult | null>(null);
+  const [error, setError] = useState("");
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!symptoms.trim()) return;
     setLoading(true);
+    setError("");
     try {
       const data = await findRemedy(symptoms, location || undefined);
       setResult(data);
     } catch (err: any) {
+      setResult(null);
+      setError(err.message || "Could not analyze symptoms. Please try again.");
       toast({
         title: "Analysis Failed",
         description: err.message || "Could not analyze symptoms. Please try again.",
@@ -91,8 +95,12 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
         </Button>
       </form>
 
+      {error && <div className="mt-6 p-4 rounded-lg bg-destructive/5 border border-destructive/20 text-sm text-destructive">{error}</div>}
+
       {result && (
         <div className="mt-8 space-y-6 animate-fade-in-up">
+          {result.warning && <div className="p-4 rounded-lg bg-accent/10 border border-accent/20 text-sm text-foreground/80">{result.warning}</div>}
+          {(!result.plants || result.plants.length === 0) && <div className="glass-card p-6 text-sm text-muted-foreground">No remedy matches were found. Try adding more specific symptoms.</div>}
           {/* Dosha Analysis Card */}
           {(result.doshaAnalysis || result.prakritiInsight) && (
             <div className="glass-card p-6 border-l-4 border-accent">
@@ -131,7 +139,7 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
           )}
 
           {/* Plant Recommendations */}
-          {result.plants.map((plant, i) => (
+          {result.plants?.map((plant, i) => (
             <div key={i} className="glass-card p-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-serif text-xl font-bold text-primary">{plant.name}</h3>
