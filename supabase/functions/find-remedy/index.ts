@@ -11,10 +11,23 @@ const stopWords = new Set([
 ]);
 
 function words(value: string): string[] {
-  return [...new Set(value.toLowerCase().replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 2 && !stopWords.has(word)))];
+  const baseWords = value.toLowerCase().replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 2 && !stopWords.has(word));
+  const synonyms: Record<string, string[]> = {
+    headache: ["migraine", "headache", "head"],
+    stress: ["stress", "anxiety", "tension"],
+    insomnia: ["insomnia", "sleep", "sleepless"],
+    fatigue: ["fatigue", "tired", "weakness", "energy"],
+    cough: ["cough", "throat", "respiratory"],
+    cold: ["cold", "congestion", "sneezing"],
+    joint: ["joint", "arthritis", "stiffness"],
+  };
+  return [...new Set(baseWords.flatMap((word) => synonyms[word] || [word]))];
 }
 
 function scoreDisease(disease: any, userWords: string[]): number {
+  const diseaseName = String(disease.disease || "").toLowerCase();
+  const symptomsText = String(disease.symptoms || "").toLowerCase();
+  const infectionPenalty = /virus|infection|infectious|fever/.test(diseaseName) && !userWords.some((word) => ["fever", "viral", "virus", "infection"].includes(word)) ? 10 : 0;
   const fields = [
     { value: disease.symptoms, weight: 5 },
     { value: disease.disease, weight: 4 },
@@ -25,7 +38,7 @@ function scoreDisease(disease: any, userWords: string[]): number {
     { value: disease.seasonal_variation, weight: 1 },
   ];
 
-  return userWords.reduce((total, word) => {
+  const score = userWords.reduce((total, word) => {
     return total + fields.reduce((fieldTotal, field) => {
       const text = String(field.value || "").toLowerCase();
       if (!text) return fieldTotal;
@@ -34,6 +47,8 @@ function scoreDisease(disease: any, userWords: string[]): number {
       return fieldTotal;
     }, 0);
   }, 0);
+  const distinctSymptomHits = userWords.filter((word) => symptomsText.includes(word) || diseaseName.includes(word)).length;
+  return score + distinctSymptomHits * 2 - infectionPenalty;
 }
 
 function splitItems(value: string | null | undefined): string[] {
@@ -44,8 +59,18 @@ function unique(values: string[]): string[] {
   const seen = new Set<string>();
   return values.filter((value) => {
     const normalized = value.toLowerCase();
-    if (!normalized || seen.has(normalized)) return false;
+    if (!normalized || normalized === "none specific" || normalized === "not specified" || seen.has(normalized)) return false;
     seen.add(normalized);
+    return true;
+  });
+}
+
+function uniqueByDisease(rows: any[]): any[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = String(row.disease || "").toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
@@ -138,17 +163,17 @@ serve(async (req) => {
 
     const diseaseRows = diseases || [];
     const userWords = words(String(symptoms));
-    const ranked = diseaseRows
+    const ranked = uniqueByDisease(diseaseRows
       .map((d: any) => ({ ...d, _score: scoreDisease(d, userWords) }))
       .filter((d: any) => d._score > 0)
-      .sort((a: any, b: any) => b._score - a._score);
+      .sort((a: any, b: any) => b._score - a._score));
 
     const topMatches = ranked.slice(0, 5);
     const primary = topMatches[0];
     const herbs = unique(topMatches.flatMap((d: any) => [...splitItems(d.ayurvedic_herbs), ...splitItems(d.herbal_remedies), ...splitItems(d.formulation)])).slice(0, 12);
-    const remedies = topMatches.map((d: any) => d.herbal_remedies || d.formulation).filter(Boolean).slice(0, 5);
-    const diet = topMatches.map((d: any) => d.diet_lifestyle).filter(Boolean).slice(0, 5);
-    const yoga = topMatches.map((d: any) => d.yoga_therapy).filter(Boolean).slice(0, 5);
+    const remedies = unique(topMatches.map((d: any) => d.herbal_remedies || d.formulation).filter(Boolean)).slice(0, 5);
+    const diet = unique(topMatches.map((d: any) => d.diet_lifestyle).filter(Boolean)).slice(0, 5);
+    const yoga = unique(topMatches.map((d: any) => d.yoga_therapy).filter(Boolean)).slice(0, 5);
 
     const explanation = await explainWithAI({
       disease: primary?.disease,
