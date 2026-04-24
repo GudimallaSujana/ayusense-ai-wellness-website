@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Search, Loader2, AlertTriangle, Heart, Salad, Dumbbell } from "lucide-react";
+import { ArrowLeft, Search, Loader2, AlertTriangle, Salad, Dumbbell, Leaf, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -8,13 +8,13 @@ import { findRemedy, type RemedyResult } from "@/lib/api";
 const plainLanguageTerms: Record<string, string> = {
   "Ushna Virya": "a warming effect on the body",
   Ushna: "warming",
-  Virya: "potency",
-  Pitta: "heat-related body imbalance",
-  Kapha: "heaviness or mucus-related imbalance",
-  Vata: "air or dryness-related imbalance",
+  Virya: "effect on the body",
+  Pitta: "heat and acidity imbalance",
+  Kapha: "heaviness, mucus, or sluggishness imbalance",
+  Vata: "dryness, gas, or restlessness imbalance",
   Rasa: "taste profile",
-  Guna: "qualities",
-  Vipaka: "post-digestion effect",
+  Guna: "natural qualities",
+  Vipaka: "after-digestion effect",
   Prabhav: "special traditional action",
 };
 
@@ -22,7 +22,25 @@ const toPlainLanguage = (value?: string) => {
   if (!value) return "";
   return Object.entries(plainLanguageTerms).reduce(
     (text, [term, replacement]) => text.replace(new RegExp(`\\b${term}\\b`, "g"), replacement),
-    value
+    value,
+  );
+};
+
+const SectionList = ({ icon: Icon, title, items }: { icon: typeof Leaf; title: string; items?: string[] }) => {
+  const safeItems = items || [];
+  if (safeItems.length === 0) return null;
+
+  return (
+    <div className="glass-card p-6">
+      <h3 className="font-semibold text-sm text-accent mb-3 flex items-center gap-2">
+        <Icon size={16} /> {title}
+      </h3>
+      <ul className="space-y-2 text-sm text-foreground/80">
+        {safeItems.map((item, index) => (
+          <li key={index} className="leading-relaxed">• {toPlainLanguage(item)}</li>
+        ))}
+      </ul>
+    </div>
   );
 };
 
@@ -39,21 +57,27 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
     if (!symptoms.trim()) return;
     setLoading(true);
     setError("");
+    setResult(null);
+
     try {
       const data = await findRemedy(symptoms, location || undefined);
+      if (data.error) setError(data.error);
       setResult(data);
     } catch (err: any) {
-      setResult(null);
-      setError(err.message || "Could not analyze symptoms. Please try again.");
-      toast({
-        title: "Analysis Failed",
-        description: err.message || "Could not analyze symptoms. Please try again.",
-        variant: "destructive",
-      });
+      const message = err.message || "Could not analyze symptoms. Please try again.";
+      setError(message);
+      toast({ title: "Analysis Failed", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
+
+  const hasResults = Boolean(
+    (result?.matchedConditions || []).length ||
+    (result?.herbs || []).length ||
+    (result?.remedies || []).length ||
+    result?.explanation,
+  );
 
   return (
     <div className="animate-fade-in-up">
@@ -65,7 +89,7 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
       </button>
 
       <h2 className="font-serif text-3xl md:text-4xl font-bold text-primary mb-2">Find Ayurvedic Remedy</h2>
-      <p className="text-muted-foreground mb-8">Enter your symptoms for AI-powered personalized Ayurvedic recommendations.</p>
+      <p className="text-muted-foreground mb-8">Enter your symptoms for database-matched Ayurvedic recommendations with simple explanations.</p>
 
       <form onSubmit={handleSubmit} className="glass-card p-8 space-y-4">
         <div>
@@ -78,7 +102,7 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
           />
         </div>
         <div>
-          <label className="text-sm font-medium text-foreground/80 mb-1 block">Location (optional — for regional plant availability)</label>
+          <label className="text-sm font-medium text-foreground/80 mb-1 block">Location (optional)</label>
           <Input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
@@ -91,7 +115,7 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
           disabled={loading || !symptoms.trim()}
           className="w-full golden-glow bg-primary hover:bg-secondary text-primary-foreground"
         >
-          {loading ? <><Loader2 className="animate-spin mr-2" size={16} /> Analyzing Suitable Remedies ....</> : <><Search className="mr-2" size={16} /> Find Remedies</>}
+          {loading ? <><Loader2 className="animate-spin mr-2" size={16} /> Finding Remedies...</> : <><Search className="mr-2" size={16} /> Find Remedies</>}
         </Button>
       </form>
 
@@ -99,119 +123,41 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
 
       {result && (
         <div className="mt-8 space-y-6 animate-fade-in-up">
-          {result.warning && <div className="p-4 rounded-lg bg-accent/10 border border-accent/20 text-sm text-foreground/80">{result.warning}</div>}
-          {(!result.plants || result.plants.length === 0) && <div className="glass-card p-6 text-sm text-muted-foreground">No remedy matches were found. Try adding more specific symptoms.</div>}
-          {/* Dosha Analysis Card */}
-          {(result.doshaAnalysis || result.prakritiInsight) && (
-            <div className="glass-card p-6 border-l-4 border-accent">
+          {!hasResults && <div className="glass-card p-6 text-sm text-muted-foreground">No remedy matches were found. Try adding more specific symptoms.</div>}
+
+          {(result.matchedConditions || []).length > 0 && (
+            <div className="glass-card p-6">
               <h3 className="font-serif text-xl font-bold text-primary mb-3 flex items-center gap-2">
-                <Heart size={18} /> Dosha & Prakriti Analysis
+                <Stethoscope size={18} /> Matched Conditions
               </h3>
-              {result.doshaAnalysis && (
-                <div className="mb-3">
-                  <h4 className="font-semibold text-sm text-accent mb-1">Dosha Imbalance</h4>
-                  <p className="text-sm text-foreground/80">{toPlainLanguage(result.doshaAnalysis)}</p>
-                </div>
-              )}
-              {result.prakritiInsight && (
-                <div>
-                  <h4 className="font-semibold text-sm text-accent mb-1">Constitution Insight</h4>
-                  <p className="text-sm text-foreground/80">{toPlainLanguage(result.prakritiInsight)}</p>
-                </div>
-              )}
-              {result.severity && (
-                <div className="mt-3 flex gap-4 text-xs">
-                  <span className="bg-accent/10 text-accent px-3 py-1 rounded-full">Severity: {result.severity}</span>
+              <div className="flex flex-wrap gap-2">
+                {(result.matchedConditions || []).map((condition, index) => (
+                  <span key={index} className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-full">{condition}</span>
+                ))}
+              </div>
+              {(result.severity || result.duration) && (
+                <div className="mt-4 flex flex-wrap gap-3 text-xs">
+                  {result.severity && <span className="bg-accent/10 text-accent px-3 py-1 rounded-full">Severity: {result.severity}</span>}
                   {result.duration && <span className="bg-primary/10 text-primary px-3 py-1 rounded-full">Duration: {result.duration}</span>}
                 </div>
               )}
             </div>
           )}
 
-          {/* Matched Conditions */}
-          {result.matchedConditions && result.matchedConditions.length > 0 && (
-            <div className="flex flex-wrap gap-2 px-1">
-              <span className="text-xs font-medium text-muted-foreground">Matched conditions:</span>
-              {result.matchedConditions.map((c, i) => (
-                <span key={i} className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-full">{c}</span>
-              ))}
+          {result.explanation && (
+            <div className="glass-card p-6 border-l-4 border-accent">
+              <h3 className="font-serif text-xl font-bold text-primary mb-3">Simple Explanation</h3>
+              <p className="text-sm text-foreground/80 whitespace-pre-line leading-relaxed">{toPlainLanguage(result.explanation)}</p>
             </div>
           )}
 
-          {/* Plant Recommendations */}
-          {result.plants?.map((plant, i) => (
-            <div key={i} className="glass-card p-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-serif text-xl font-bold text-primary">{plant.name}</h3>
-                <span className="text-xs font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
-                  {plant.confidence}% match
-                </span>
-              </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <SectionList icon={Leaf} title="Recommended Herbs" items={result.herbs} />
+            <SectionList icon={AlertTriangle} title="Database Remedies" items={result.remedies} />
+            <SectionList icon={Salad} title="Diet & Lifestyle" items={result.diet} />
+            <SectionList icon={Dumbbell} title="Yoga & Therapy" items={result.yoga} />
+          </div>
 
-              <div className="space-y-4 text-sm">
-                <div>
-                  <h4 className="font-semibold text-accent mb-1">🧠 Why Recommended</h4>
-                  <p className="text-foreground/80">{toPlainLanguage(plant.reason)}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-accent mb-1">⚙️ How It Works</h4>
-                  <p className="text-foreground/80">{toPlainLanguage(plant.mechanism)}</p>
-                </div>
-                {plant.doshaEffect && (
-                  <div>
-                    <h4 className="font-semibold text-accent mb-1">🕉️ Dosha Effect</h4>
-                    <p className="text-foreground/80">{toPlainLanguage(plant.doshaEffect)}</p>
-                  </div>
-                )}
-                <div>
-                  <h4 className="font-semibold text-accent mb-1">🏡 Safe Home Remedy</h4>
-                  <p className="text-foreground/80">{toPlainLanguage(plant.remedy)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-                  <h4 className="font-semibold text-destructive mb-1 flex items-center gap-1">
-                    <AlertTriangle size={14} /> Precautions
-                  </h4>
-                  <p className="text-foreground/80">{toPlainLanguage(plant.precautions)}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Diet & Yoga */}
-          {(result.dietRecommendations || result.yogaRecommendations) && (
-            <div className="grid md:grid-cols-2 gap-6">
-              {result.dietRecommendations && (
-                <div className="glass-card p-6">
-                  <h4 className="font-semibold text-sm text-accent mb-2 flex items-center gap-2">
-                    <Salad size={16} /> Diet & Lifestyle
-                  </h4>
-                   <p className="text-sm text-foreground/80">{toPlainLanguage(result.dietRecommendations)}</p>
-                </div>
-              )}
-              {result.yogaRecommendations && (
-                <div className="glass-card p-6">
-                  <h4 className="font-semibold text-sm text-accent mb-2 flex items-center gap-2">
-                    <Dumbbell size={16} /> Yoga & Therapy
-                  </h4>
-                   <p className="text-sm text-foreground/80">{toPlainLanguage(result.yogaRecommendations)}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Alternatives */}
-          {result.alternatives && result.alternatives.length > 0 && (
-            <div className="glass-card p-6">
-              <h4 className="font-semibold text-sm text-accent mb-2">🔄 Alternative Plant Suggestions</h4>
-              <div className="flex flex-wrap gap-2">
-                {result.alternatives.map((a, i) => (
-                  <span key={i} className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">{a}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Disclaimer */}
           {result.disclaimer && (
             <div className="text-xs text-muted-foreground text-center p-4 border border-border/50 rounded-lg">
               ⚕️ {result.disclaimer}

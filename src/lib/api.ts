@@ -59,24 +59,14 @@ export interface PlantIdentificationResult {
 
 export interface RemedyResult {
   matchedConditions?: string[];
-  plants: {
-    name: string;
-    reason: string;
-    mechanism: string;
-    doshaEffect?: string;
-    remedy: string;
-    precautions: string;
-    confidence: number;
-  }[];
-  doshaAnalysis?: string;
-  prakritiInsight?: string;
-  dietRecommendations?: string;
-  yogaRecommendations?: string;
-  alternatives: string[];
+  herbs?: string[];
+  remedies?: string[];
+  diet?: string[];
+  yoga?: string[];
+  explanation?: string;
   severity?: string;
   duration?: string;
   disclaimer?: string;
-  warning?: string;
   error?: string;
 }
 
