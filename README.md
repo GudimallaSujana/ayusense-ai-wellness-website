@@ -45,7 +45,7 @@ npm test
 
 ## Notes
 
-- Update environment variables for your AI gateway service in Supabase function settings.
+- Set GEMINI_API_KEY and database connection secrets in function settings before running AI features.
 - Remove or replace placeholder images with your own branded imagery before launch.
 
 ## License
