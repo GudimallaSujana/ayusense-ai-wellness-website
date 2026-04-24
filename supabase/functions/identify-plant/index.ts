@@ -98,9 +98,28 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
 
     if (!response.ok) {
       const status = response.status;
+      const errorText = await response.text();
+      console.error("Gemini API error:", status, errorText);
+      if (status >= 500) {
+        return new Response(JSON.stringify({
+          plantName: "No matching plant found in dataset",
+          scientificName: "",
+          family: "",
+          confidence: 0,
+          features: [],
+          benefits: [],
+          remedies: [],
+          climate: "",
+          availability: "",
+          alternatives: [],
+          precautions: ["The plant identification service is temporarily unavailable. Please try again in a moment."],
+          databaseMatch: false,
+          warning: "Plant identification is temporarily unavailable. No dataset match could be verified.",
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
       if (status === 429) return new Response(JSON.stringify({ error: "Rate limited. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       if (status === 402) return new Response(JSON.stringify({ error: "Service credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI gateway error: ${status}`);
+      throw new Error(`Gemini API error: ${status}`);
     }
 
     const data = await response.json();
