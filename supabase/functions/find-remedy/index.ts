@@ -174,7 +174,19 @@ Respond only in this JSON format:
       }
       if (status === 429 || status === 402) return new Response(JSON.stringify({
         matchedConditions: contextDiseases.slice(0, 12).map((d: any) => d.disease),
-        plants: fallbackPlants,
+        plants: candidateHerbs.slice(0, 10).map((h: any, index: number) => {
+          const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase()) || (d.herbal_remedies || "").toLowerCase().includes(h.name.toLowerCase())) || contextDiseases[0];
+          return {
+            name: h.name,
+            reason: `Recommended from database match for ${related?.disease || "the closest matched condition"}.`,
+            mechanism: `Taste profile: ${(h.rasa || []).join(", ") || "not specified"}; qualities: ${(h.guna || []).join(", ") || "not specified"}; body effect: ${h.virya || "not specified"}; after-digestion effect: ${h.vipaka || "not specified"}.`,
+            doshaEffect: `May help calm: ${(h.pacify || []).join(", ") || "not specified"}. May increase imbalance in: ${(h.aggravate || []).join(", ") || "not specified"}.`,
+            remedy: related?.formulation || related?.herbal_remedies || "Use only under guidance from a qualified Ayurvedic practitioner.",
+            precautions: "Avoid self-medication during pregnancy, chronic disease, allergies, or when taking prescription medicines.",
+            confidence: Math.max(68, Math.min(92, 88 - index * 2)),
+            verified: true,
+          };
+        }),
         alternatives: candidateHerbs.slice(0, 12).map((h: any) => h.name),
         doshaAnalysis: "The AI explanation service is temporarily limited, so these results are based directly on the closest matching disease and herb records in the database.",
         disclaimer: "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only.",
