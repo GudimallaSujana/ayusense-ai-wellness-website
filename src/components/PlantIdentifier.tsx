@@ -8,6 +8,7 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PlantIdentificationResult | null>(null);
+  const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -23,10 +24,13 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
   const handleIdentify = async () => {
     if (!image) return;
     setLoading(true);
+    setError("");
     try {
       const data = await identifyPlant(image);
       setResult(data);
     } catch (err: any) {
+      setResult(null);
+      setError(err.message || "Could not identify the plant. Please try again.");
       toast({
         title: "Identification Failed",
         description: err.message || "Could not identify the plant. Please try again.",
@@ -75,8 +79,11 @@ const PlantIdentifier = ({ onBack }: { onBack: () => void }) => {
         )}
       </div>
 
+      {error && <div className="mt-6 p-4 rounded-lg bg-destructive/5 border border-destructive/20 text-sm text-destructive">{error}</div>}
+
       {result && (
         <div className="mt-8 space-y-6 animate-fade-in-up">
+          {(!result.plantName || result.confidence <= 0) && <div className="glass-card p-6 text-sm text-muted-foreground">No confident plant match was found. Try a clearer leaf, flower, or whole-plant image.</div>}
           {/* Database match indicator */}
           {result.databaseMatch !== undefined && (
             <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${result.databaseMatch ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-destructive/10 text-destructive border border-destructive/20'}`}>
