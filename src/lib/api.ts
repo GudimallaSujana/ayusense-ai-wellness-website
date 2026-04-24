@@ -1,4 +1,24 @@
-import { supabase } from "@/integrations/supabase/client";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_API_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+async function callEdgeFunction<T>(functionName: "identify-plant" | "find-remedy", body: Record<string, unknown>): Promise<T> {
+  const apiUrl = `${SUPABASE_URL}/functions/v1/${functionName}`;
+  console.log(`Calling API: ${apiUrl}`);
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || `Request failed with status ${response.status}`);
+  if (data?.error) throw new Error(data.error);
+  return data as T;
+}
 
 export interface PlantIdentificationResult {
   plantName: string;
@@ -56,25 +76,14 @@ export interface RemedyResult {
   severity?: string;
   duration?: string;
   disclaimer?: string;
+  warning?: string;
   error?: string;
 }
 
 export async function identifyPlant(imageBase64: string): Promise<PlantIdentificationResult> {
-  const { data, error } = await supabase.functions.invoke("identify-plant", {
-    body: { imageBase64 },
-  });
-
-  if (error) throw new Error(error.message || "Failed to identify plant");
-  if (data?.error) throw new Error(data.error);
-  return data;
+  return callEdgeFunction<PlantIdentificationResult>("identify-plant", { imageBase64 });
 }
 
 export async function findRemedy(symptoms: string, location?: string): Promise<RemedyResult> {
-  const { data, error } = await supabase.functions.invoke("find-remedy", {
-    body: { symptoms, location },
-  });
-
-  if (error) throw new Error(error.message || "Failed to find remedy");
-  if (data?.error) throw new Error(data.error);
-  return data;
+  return callEdgeFunction<RemedyResult>("find-remedy", { symptoms, location });
 }
