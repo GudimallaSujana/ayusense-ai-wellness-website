@@ -172,8 +172,14 @@ Respond only in this JSON format:
           error: "Remedy analysis is temporarily unavailable. Please try again in a moment.",
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      if (status === 429) return new Response(JSON.stringify({ error: "Rate limited or API quota exceeded. Replace or recharge GEMINI_API_KEY, then update the GEMINI_API_KEY secret." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (status === 402) return new Response(JSON.stringify({ error: "Gemini billing or credits are exhausted. Replace or recharge GEMINI_API_KEY, then update the GEMINI_API_KEY secret." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (status === 429 || status === 402) return new Response(JSON.stringify({
+        matchedConditions: contextDiseases.slice(0, 12).map((d: any) => d.disease),
+        plants: fallbackPlants,
+        alternatives: candidateHerbs.slice(0, 12).map((h: any) => h.name),
+        doshaAnalysis: "The AI explanation service is temporarily limited, so these results are based directly on the closest matching disease and herb records in the database.",
+        disclaimer: "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only.",
+        warning: status === 429 ? "Gemini API quota is exhausted. Replace or recharge GEMINI_API_KEY to restore full AI explanations." : "Gemini billing or credits are exhausted. Replace or recharge GEMINI_API_KEY to restore full AI explanations.",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       throw new Error(`Gemini API error: ${status}`);
     }
 
