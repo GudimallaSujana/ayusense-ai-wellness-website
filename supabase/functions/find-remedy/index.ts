@@ -102,7 +102,7 @@ serve(async (req) => {
       `${h.name}|Preview:${h.preview || ""}|Pacifies:${(h.pacify||[]).join(",")}|Aggravates:${(h.aggravate||[]).join(",")}|Rasa:${(h.rasa||[]).join(",")}|Guna:${(h.guna||[]).join(",")}|Virya:${h.virya}|Vipaka:${h.vipaka}|Prabhav:${(h.prabhav||[]).join(",")}`
     ).join("\n");
 
-    const systemPrompt = `You are AyuSense, an Ayurvedic remedy advisor. Use ONLY the disease and herb data below. Do not invent diseases, herbs, formulations, or dosha facts.
+    const systemPrompt = `You are AyuSense, an Ayurvedic remedy advisor. Use ONLY the disease and herb data below. Do not invent diseases, herbs, formulations, or dosha facts. Explain all Ayurvedic terms in simple human language. Do not output standalone technical words like Pitta, Kapha, Vata, Ushna, Virya, Rasa, Guna, Vipaka, or Prabhav without explaining what they mean in the same sentence.
 
 === BEST MATCHING DISEASE RECORDS (${contextDiseases.length}) ===
 ${diseaseContext}
@@ -214,7 +214,7 @@ Respond only in this JSON format:
           ...p,
           name: matchedHerb.name,
           verified: true,
-          doshaEffect: `Pacifies: ${(matchedHerb.pacify||[]).join(", ") || "not specified"} | Aggravates: ${(matchedHerb.aggravate||[]).join(", ") || "not specified"}`,
+          doshaEffect: `May help calm: ${(matchedHerb.pacify||[]).join(", ") || "not specified"}. May increase imbalance in: ${(matchedHerb.aggravate||[]).join(", ") || "not specified"}. Use with guidance if you are sensitive to heat, dryness, or heaviness.`,
         };
       }
       return { ...p, verified: false };
