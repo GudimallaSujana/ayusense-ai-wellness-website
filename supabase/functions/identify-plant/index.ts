@@ -13,10 +13,8 @@ serve(async (req) => {
     const { imageBase64 } = await req.json();
     if (!imageBase64) throw new Error("No image provided");
 
-    const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
-    const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL");
-    if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
-    if (!AI_GATEWAY_URL) throw new Error("AI_GATEWAY_URL not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -78,21 +76,20 @@ You MUST respond in this exact JSON format:
 If you cannot identify the plant, set confidence below 30 and explain what you see.`;
 
     // Step 1: AI identifies the plant
-    const response = await fetch(AI_GATEWAY_URL, {
+    const imageData = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
+    const mimeType = imageBase64.match(/^data:(.*?);base64,/)?.[1] || "image/jpeg";
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${AI_GATEWAY_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
+        contents: [
           {
-            role: "user",
-            content: [
-              { type: "text", text: "Identify this medicinal plant and match it to the database. Use the EXACT herb name from the provided list." },
-              { type: "image_url", image_url: { url: imageBase64 } },
+            parts: [
+              { text: `${systemPrompt}\n\nIdentify this medicinal plant and match it to the database. Use the EXACT herb name from the provided list.` },
+              { inlineData: { mimeType, data: imageData } },
             ],
           },
         ],
@@ -107,7 +104,7 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
+    const content = data.candidates?.[0]?.content?.parts?.map((part: any) => part.text || "").join("\n") || "";
 
     let parsed: any;
     try {
