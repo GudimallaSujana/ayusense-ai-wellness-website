@@ -1,5 +1,5 @@
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_API_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://aohdlubsuktrakghwace.supabase.co";
+const SUPABASE_API_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFvaGRsdWJzdWt0cmFrZ2h3YWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MzE0MTYsImV4cCI6MjA5MjUwNzQxNn0.2t8NjyjP3Af-RE6cB7XgL7afvxBSSguGQk8Uv7iaXGw";
 
 async function callEdgeFunction<T>(functionName: "identify-plant" | "find-remedy", body: Record<string, unknown>): Promise<T> {
   const apiUrl = `${SUPABASE_URL}/functions/v1/${functionName}`;
