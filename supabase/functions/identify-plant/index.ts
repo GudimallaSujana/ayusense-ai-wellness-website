@@ -6,53 +6,65 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function callOpenRouterVision(systemPrompt: string, userText: string, imageDataUrl: string) {
-  const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
-  const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions";
-  if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
+async function callVisionAI(systemPrompt: string, userText: string, imageDataUrl: string) {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const OPENROUTER_KEY = Deno.env.get("AI_GATEWAY_KEY");
 
-  // Free vision-capable models on OpenRouter (fall back through them)
-  const models = [
-    "meta-llama/llama-3.2-11b-vision-instruct:free",
-    "qwen/qwen-2-vl-7b-instruct:free",
-    "google/gemini-flash-1.5:free",
-  ];
+  const providers: { url: string; key: string; models: string[]; headers?: Record<string, string> }[] = [];
+  if (LOVABLE_API_KEY) {
+    providers.push({
+      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
+      key: LOVABLE_API_KEY,
+      // Gemini flash models support vision via OpenAI-compatible image_url content
+      models: ["google/gemini-3-flash-preview", "google/gemini-2.5-flash", "google/gemini-2.5-pro"],
+    });
+  }
+  if (OPENROUTER_KEY) {
+    providers.push({
+      url: Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions",
+      key: OPENROUTER_KEY,
+      models: ["google/gemini-flash-1.5", "meta-llama/llama-3.2-11b-vision-instruct"],
+      headers: { "HTTP-Referer": "https://ayusense.app", "X-Title": "AyuSense" },
+    });
+  }
+  if (providers.length === 0) throw new Error("No AI provider configured");
 
   let lastErr = "";
-  for (const model of models) {
-    const resp = await fetch(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${AI_GATEWAY_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ayusense.app",
-        "X-Title": "AyuSense",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: userText },
-              { type: "image_url", image_url: { url: imageDataUrl } },
-            ],
-          },
-        ],
-        temperature: 0.2,
-        max_tokens: 1500,
-      }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      return data.choices?.[0]?.message?.content || "";
+  for (const p of providers) {
+    for (const model of p.models) {
+      const resp = await fetch(p.url, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${p.key}`,
+          "Content-Type": "application/json",
+          ...(p.headers || {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: userText },
+                { type: "image_url", image_url: { url: imageDataUrl } },
+              ],
+            },
+          ],
+          temperature: 0.2,
+          max_tokens: 2000,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.choices?.[0]?.message?.content || "";
+      }
+      lastErr = `${resp.status} ${await resp.text()}`;
+      console.error(`Vision model ${model} on ${p.url} failed:`, lastErr);
+      if (resp.status !== 429 && resp.status !== 402 && resp.status !== 404) break;
     }
-    lastErr = `${resp.status} ${await resp.text()}`;
-    console.error(`OpenRouter vision ${model} failed:`, lastErr);
-    if (resp.status !== 429 && resp.status !== 402 && resp.status !== 404) break;
   }
-  throw new Error(`OpenRouter vision error: ${lastErr}`);
+  throw new Error(`Vision AI error: ${lastErr}`);
 }
 
 serve(async (req) => {
@@ -101,13 +113,15 @@ If unsure, set confidence below 30.`;
 
     let content = "";
     try {
-      content = await callOpenRouterVision(systemPrompt, userText, imageDataUrl);
+      content = await callVisionAI(systemPrompt, userText, imageDataUrl);
     } catch (aiErr) {
       console.error("Vision AI failed:", aiErr);
       return new Response(JSON.stringify({
         plantName: "Identification unavailable",
+        scientificName: "",
         confidence: 0,
-        features: [], benefits: [], remedies: [],
+        features: [], benefits: [], remedies: [], alternatives: [],
+        climate: "", availability: "",
         precautions: ["Plant identification service is temporarily busy. Please try again in a moment."],
         databaseMatch: false,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -171,6 +185,16 @@ If unsure, set confidence below 30.`;
       parsed.databaseMatch = false;
       parsed.warning = "This plant was not found in our verified database. Results are AI-generated.";
     }
+
+    // Ensure all array fields exist so the frontend never crashes on .map()
+    parsed.features = Array.isArray(parsed.features) ? parsed.features : [];
+    parsed.benefits = Array.isArray(parsed.benefits) ? parsed.benefits : [];
+    parsed.remedies = Array.isArray(parsed.remedies) ? parsed.remedies : [];
+    parsed.alternatives = Array.isArray(parsed.alternatives) ? parsed.alternatives : [];
+    parsed.precautions = Array.isArray(parsed.precautions) ? parsed.precautions : [];
+    parsed.scientificName = parsed.scientificName || "";
+    parsed.climate = parsed.climate || "";
+    parsed.availability = parsed.availability || "";
 
     return new Response(JSON.stringify(parsed), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
