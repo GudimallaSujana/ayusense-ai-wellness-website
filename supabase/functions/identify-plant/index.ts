@@ -197,7 +197,7 @@ If unsure, set confidence below 30.`;
       if (matchedHerb.preview) parsed.description = matchedHerb.preview;
 
       const relatedDiseases = (diseases || []).filter((d: any) =>
-        (d.ayurvedic_herbs || "").toLowerCase().includes(matchedHerb.name.toLowerCase())
+        [d.ayurvedic_herbs, d.herbal_remedies, d.formulation].some((field) => String(field || "").toLowerCase().includes(matchedHerb.name.toLowerCase()))
       );
       if (relatedDiseases.length > 0) {
         parsed.treatedConditions = relatedDiseases.map((d: any) => ({
@@ -207,6 +207,28 @@ If unsure, set confidence below 30.`;
         const dbRemedies = relatedDiseases.filter((d: any) => d.formulation).map((d: any) => `For ${d.disease}: ${d.formulation}`);
         if (dbRemedies.length > 0) parsed.remedies = [...(parsed.remedies || []), ...dbRemedies];
       }
+
+      const topCondition = relatedDiseases[0];
+      const warming = String(matchedHerb.virya || "").toLowerCase().includes("ush") || String(matchedHerb.virya || "").toLowerCase().includes("hot");
+      const cooling = String(matchedHerb.virya || "").toLowerCase().includes("sheet") || String(matchedHerb.virya || "").toLowerCase().includes("cold");
+      const benefitsFromDb = [
+        matchedHerb.preview ? `${matchedHerb.name}: ${matchedHerb.preview}` : "",
+        topCondition ? `Traditionally used for ${topCondition.disease}, especially when symptoms include ${String(topCondition.symptoms || "").toLowerCase()}.` : "",
+        explain(matchedHerb.prabhav) ? `Its special traditional actions ${explain(matchedHerb.prabhav)}.` : "",
+      ].filter(Boolean);
+      parsed.benefits = [...benefitsFromDb, ...(parsed.benefits || [])].slice(0, 6);
+
+      const propertyExplanation = `${explain(matchedHerb.rasa, "recorded taste profile")}; ${explain(matchedHerb.guna, "recorded qualities")}; ${warming ? "warming body action" : cooling ? "cooling body action" : "balanced body action"}`;
+      parsed.traditionalUses = parsed.traditionalUses || `${matchedHerb.name} is used according to its database profile: ${propertyExplanation}. It helps calm ${explainDoshas(matchedHerb.pacify) || "the relevant imbalance"}${matchedHerb.aggravate?.length ? ` but may worsen ${explainDoshas(matchedHerb.aggravate)} if overused` : ""}.`;
+      parsed.whyIdentified = parsed.whyIdentified || `The image was matched to ${matchedHerb.name} from the verified herb list, then cross-checked with its database profile. Its known actions (${propertyExplanation}) explain why this plant is relevant to the listed traditional uses and remedies.`;
+
+      const precautions = [];
+      if (warming) precautions.push(`${matchedHerb.name} has a warming action, so avoid high doses if you have acidity, burning sensation, heat rashes, mouth ulcers, or strong heat-related irritability.`);
+      if (cooling) precautions.push(`${matchedHerb.name} has a cooling action, so use carefully if you have heavy mucus, weak digestion, coldness, or sluggishness.`);
+      if (matchedHerb.aggravate?.length) precautions.push(`It may increase ${explainDoshas(matchedHerb.aggravate)}, so stop or reduce it if those symptoms worsen.`);
+      if (topCondition?.disease || topCondition?.symptoms) precautions.push(`For ${topCondition.disease || "this condition"}, do not replace prescribed treatment; use the listed remedy only as supportive care.`);
+      precautions.push(`Avoid during pregnancy, breastfeeding, before surgery, or with prescription medicines unless a qualified practitioner confirms it is safe for you.`);
+      parsed.precautions = [...precautions, ...(parsed.precautions || [])].filter((v, i, arr) => v && arr.indexOf(v) === i).slice(0, 5);
 
       const samePacify = matchedHerb.pacify || [];
       const alternatives = (herbs || [])
