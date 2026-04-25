@@ -195,9 +195,9 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
     // Helpers to build UNIQUE per-herb DB-grounded content (used both as AI fallback and to backfill missing AI fields)
     const plainDosha = (d: string) => {
       const map: Record<string, string> = {
-        vata: "the body's air/movement energy (linked to dryness, anxiety, restlessness)",
-        pitta: "the body's heat/transformation energy (linked to inflammation, acidity, irritability)",
-        kapha: "the body's earth/water energy (linked to heaviness, mucus, sluggishness)",
+        vata: "air/movement energy (dryness, anxiety, restlessness)",
+        pitta: "heat/transformation energy (inflammation, acidity, irritability)",
+        kapha: "earth/water energy (heaviness, mucus, sluggishness)",
       };
       return map[d.toLowerCase().trim()] || d;
     };
