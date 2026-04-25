@@ -186,6 +186,16 @@ If unsure, set confidence below 30.`;
       parsed.warning = "This plant was not found in our verified database. Results are AI-generated.";
     }
 
+    // Ensure all array fields exist so the frontend never crashes on .map()
+    parsed.features = Array.isArray(parsed.features) ? parsed.features : [];
+    parsed.benefits = Array.isArray(parsed.benefits) ? parsed.benefits : [];
+    parsed.remedies = Array.isArray(parsed.remedies) ? parsed.remedies : [];
+    parsed.alternatives = Array.isArray(parsed.alternatives) ? parsed.alternatives : [];
+    parsed.precautions = Array.isArray(parsed.precautions) ? parsed.precautions : [];
+    parsed.scientificName = parsed.scientificName || "";
+    parsed.climate = parsed.climate || "";
+    parsed.availability = parsed.availability || "";
+
     return new Response(JSON.stringify(parsed), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
