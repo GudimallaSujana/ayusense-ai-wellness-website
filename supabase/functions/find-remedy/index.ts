@@ -45,47 +45,59 @@ function uniqueByName(items: any[]) {
   });
 }
 
-async function callOpenRouter(systemPrompt: string, userMessage: string) {
-  const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
-  const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions";
-  if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
+async function callAI(systemPrompt: string, userMessage: string) {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const OPENROUTER_KEY = Deno.env.get("AI_GATEWAY_KEY");
 
-  const models = [
-    "mistralai/mistral-7b-instruct:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "openchat/openchat-7b:free",
-    "mistralai/mistral-7b-instruct",
-  ];
+  // Provider chain: Lovable AI Gateway first (auto-provisioned), then OpenRouter as fallback
+  const providers: { url: string; key: string; models: string[]; headers?: Record<string, string> }[] = [];
+  if (LOVABLE_API_KEY) {
+    providers.push({
+      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
+      key: LOVABLE_API_KEY,
+      models: ["google/gemini-3-flash-preview", "google/gemini-2.5-flash", "google/gemini-2.5-flash-lite"],
+    });
+  }
+  if (OPENROUTER_KEY) {
+    providers.push({
+      url: Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions",
+      key: OPENROUTER_KEY,
+      models: ["google/gemini-flash-1.5", "mistralai/mistral-7b-instruct"],
+      headers: { "HTTP-Referer": "https://ayusense.app", "X-Title": "AyuSense" },
+    });
+  }
+  if (providers.length === 0) throw new Error("No AI provider configured");
 
   let lastErr = "";
-  for (const model of models) {
-    const resp = await fetch(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${AI_GATEWAY_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ayusense.app",
-        "X-Title": "AyuSense",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        temperature: 0.3,
-        max_tokens: 2048,
-      }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      return data.choices?.[0]?.message?.content || "";
+  for (const p of providers) {
+    for (const model of p.models) {
+      const resp = await fetch(p.url, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${p.key}`,
+          "Content-Type": "application/json",
+          ...(p.headers || {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          temperature: 0.3,
+          max_tokens: 3000,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.choices?.[0]?.message?.content || "";
+      }
+      lastErr = `${resp.status} ${await resp.text()}`;
+      console.error(`Model ${model} on ${p.url} failed:`, lastErr);
+      if (resp.status !== 429 && resp.status !== 402 && resp.status !== 404) break;
     }
-    lastErr = `${resp.status} ${await resp.text()}`;
-    console.error(`OpenRouter model ${model} failed:`, lastErr);
-    if (resp.status !== 429 && resp.status !== 402 && resp.status !== 404) break;
   }
-  throw new Error(`OpenRouter error: ${lastErr}`);
+  throw new Error(`AI error: ${lastErr}`);
 }
 
 serve(async (req) => {
@@ -163,7 +175,7 @@ Return 6-10 plants. Keep language simple and human-friendly.`;
 
     let content = "";
     try {
-      content = await callOpenRouter(systemPrompt, userMessage);
+      content = await callAI(systemPrompt, userMessage);
     } catch (aiErr) {
       console.error("AI gateway failed, using database fallback:", aiErr);
       const fallbackPlants = candidateHerbs.slice(0, 10).map((h: any, index: number) => {
