@@ -6,6 +6,38 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const doshaPlain: Record<string, string> = {
+  vata: "air/movement imbalance such as dryness, worry, restlessness, pain, or poor sleep",
+  pitta: "heat-related imbalance such as acidity, burning, inflammation, or irritability",
+  kapha: "heaviness/mucus imbalance such as congestion, sluggishness, or excess mucus",
+};
+
+const propertyPlain: Record<string, string> = {
+  tikta: "bitter taste that supports cleansing and lightness",
+  kashaya: "astringent taste that helps tone tissues and dry excess fluid",
+  madhura: "sweet nourishing effect that supports strength and recovery",
+  katu: "pungent action that helps clear congestion and stimulate digestion",
+  guru: "heavy/nourishing quality",
+  snigdha: "moistening quality",
+  laghu: "light/easy-to-digest quality",
+  ruksha: "drying quality",
+  medhya: "supports memory, focus, and calm mental function",
+  balya: "supports strength and stamina",
+  rasayan: "supports rejuvenation and resilience",
+  rasayana: "supports rejuvenation and resilience",
+  vrishya: "supports vitality",
+  jwaraghna: "traditionally supports fever and heat management",
+};
+
+function explain(values: string[] | null | undefined, fallback = "") {
+  const out = (values || []).filter(Boolean).map((v) => propertyPlain[String(v).toLowerCase().trim()] || String(v).toLowerCase());
+  return out.length ? out.join("; ") : fallback;
+}
+
+function explainDoshas(values: string[] | null | undefined) {
+  return (values || []).filter(Boolean).map((v) => doshaPlain[String(v).toLowerCase().trim()] || String(v).toLowerCase()).join(" and ");
+}
+
 async function callVisionAI(systemPrompt: string, userText: string, imageDataUrl: string) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const OPENROUTER_KEY = Deno.env.get("AI_GATEWAY_KEY");
@@ -81,11 +113,11 @@ serve(async (req) => {
       .select("name, preview, pacify, aggravate, tridosha, rasa, guna, virya, vipaka, prabhav");
     const { data: diseases } = await supabase
       .from("diseases")
-      .select("disease, ayurvedic_herbs, formulation, herbal_remedies, symptoms");
+      .select("disease, ayurvedic_herbs, formulation, herbal_remedies, symptoms, doshas, diet_lifestyle, yoga_therapy");
 
     const herbNames = (herbs || []).map((h: any) => h.name);
 
-    const systemPrompt = `You are an expert botanist and Ayurvedic practitioner. Identify medicinal plants from images and match them to a known herb database. Always respond with valid JSON only. Use plain human language, never raw Sanskrit terms without explanation.`;
+    const systemPrompt = `You are an expert botanist and Ayurvedic practitioner. Identify medicinal plants from images and match them to a known herb database. Always respond with valid JSON only. Use plain human language, never raw Sanskrit terms without explanation. Benefits, remedies, precautions, and whyIdentified must be specific to the identified plant, not generic.`;
 
     const userText = `Identify this medicinal plant. Match it to ONE of these herb names from our database (use the EXACT name):
 
@@ -98,13 +130,13 @@ Respond with JSON only:
   "family": "botanical family",
   "confidence": 85,
   "features": ["visible features"],
-  "benefits": ["health benefits in plain language"],
-  "remedies": ["safe home remedies with measurements"],
+  "benefits": ["plant-specific health benefits in plain language"],
+  "remedies": ["plant-specific safe home remedies with measurements"],
   "climate": "climate suitability",
   "availability": "where it grows",
-  "precautions": ["safety notes"],
+  "precautions": ["specific safety notes based on this plant's action, dose, and body imbalance it may worsen"],
   "traditionalUses": "traditional uses in plain words",
-  "whyIdentified": "why you matched this plant"
+  "whyIdentified": "2–3 lines explaining the visible features that led to this identification and why this plant's known actions fit the database match"
 }
 
 If unsure, set confidence below 30.`;
@@ -165,7 +197,7 @@ If unsure, set confidence below 30.`;
       if (matchedHerb.preview) parsed.description = matchedHerb.preview;
 
       const relatedDiseases = (diseases || []).filter((d: any) =>
-        (d.ayurvedic_herbs || "").toLowerCase().includes(matchedHerb.name.toLowerCase())
+        [d.ayurvedic_herbs, d.herbal_remedies, d.formulation].some((field) => String(field || "").toLowerCase().includes(matchedHerb.name.toLowerCase()))
       );
       if (relatedDiseases.length > 0) {
         parsed.treatedConditions = relatedDiseases.map((d: any) => ({
@@ -175,6 +207,28 @@ If unsure, set confidence below 30.`;
         const dbRemedies = relatedDiseases.filter((d: any) => d.formulation).map((d: any) => `For ${d.disease}: ${d.formulation}`);
         if (dbRemedies.length > 0) parsed.remedies = [...(parsed.remedies || []), ...dbRemedies];
       }
+
+      const topCondition = relatedDiseases[0];
+      const warming = String(matchedHerb.virya || "").toLowerCase().includes("ush") || String(matchedHerb.virya || "").toLowerCase().includes("hot");
+      const cooling = String(matchedHerb.virya || "").toLowerCase().includes("sheet") || String(matchedHerb.virya || "").toLowerCase().includes("cold");
+      const benefitsFromDb = [
+        matchedHerb.preview ? `${matchedHerb.name}: ${matchedHerb.preview}` : "",
+        topCondition ? `Traditionally used for ${topCondition.disease}, especially when symptoms include ${String(topCondition.symptoms || "").toLowerCase()}.` : "",
+        explain(matchedHerb.prabhav) ? `Its special traditional actions ${explain(matchedHerb.prabhav)}.` : "",
+      ].filter(Boolean);
+      parsed.benefits = [...benefitsFromDb, ...(parsed.benefits || [])].slice(0, 6);
+
+      const propertyExplanation = `${explain(matchedHerb.rasa, "recorded taste profile")}; ${explain(matchedHerb.guna, "recorded qualities")}; ${warming ? "warming body action" : cooling ? "cooling body action" : "balanced body action"}`;
+      parsed.traditionalUses = parsed.traditionalUses || `${matchedHerb.name} is used according to its database profile: ${propertyExplanation}. It helps calm ${explainDoshas(matchedHerb.pacify) || "the relevant imbalance"}${matchedHerb.aggravate?.length ? ` but may worsen ${explainDoshas(matchedHerb.aggravate)} if overused` : ""}.`;
+      parsed.whyIdentified = parsed.whyIdentified || `The image was matched to ${matchedHerb.name} from the verified herb list, then cross-checked with its database profile. Its known actions (${propertyExplanation}) explain why this plant is relevant to the listed traditional uses and remedies.`;
+
+      const precautions = [];
+      if (warming) precautions.push(`${matchedHerb.name} has a warming action, so avoid high doses if you have acidity, burning sensation, heat rashes, mouth ulcers, or strong heat-related irritability.`);
+      if (cooling) precautions.push(`${matchedHerb.name} has a cooling action, so use carefully if you have heavy mucus, weak digestion, coldness, or sluggishness.`);
+      if (matchedHerb.aggravate?.length) precautions.push(`It may increase ${explainDoshas(matchedHerb.aggravate)}, so stop or reduce it if those symptoms worsen.`);
+      if (topCondition?.disease || topCondition?.symptoms) precautions.push(`For ${topCondition.disease || "this condition"}, do not replace prescribed treatment; use the listed remedy only as supportive care.`);
+      precautions.push(`Avoid during pregnancy, breastfeeding, before surgery, or with prescription medicines unless a qualified practitioner confirms it is safe for you.`);
+      parsed.precautions = [...precautions, ...(parsed.precautions || [])].filter((v, i, arr) => v && arr.indexOf(v) === i).slice(0, 5);
 
       const samePacify = matchedHerb.pacify || [];
       const alternatives = (herbs || [])
