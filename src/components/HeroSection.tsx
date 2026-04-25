@@ -1,16 +1,18 @@
-import heroBg from "@/assets/hero-bg.jpg";
+import heroBg from "@/assets/bg2.png";
 
 const HeroSection = () => {
   return (
-    <section className="relative min-h-[70vh] flex items-center justify-center overflow-hidden">
-      {/* Background image */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src={heroBg}
-          alt="Ayurvedic herbs and plants"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/60 to-background" />
+    <section
+      className="relative min-h-[70vh] flex items-center justify-center overflow-hidden bg-cover bg-center"
+      style={{ backgroundImage: `url(${heroBg})` }}
+    >
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-white/10"></div>
+
+      {/* Floating effects (keep if you want) */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -left-24 top-16 h-72 w-72 rounded-full bg-emerald-200/60 blur-3xl" />
+        <div className="absolute right-0 bottom-16 h-80 w-80 rounded-full bg-primary/15 blur-3xl" />
       </div>
 
       {/* Content */}

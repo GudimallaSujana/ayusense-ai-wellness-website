@@ -5,6 +5,27 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { findRemedy, type RemedyResult } from "@/lib/api";
 
+const plainLanguageTerms: Record<string, string> = {
+  "Ushna Virya": "a warming effect on the body",
+  Ushna: "warming",
+  Virya: "potency",
+  Pitta: "heat-related body imbalance",
+  Kapha: "heaviness or mucus-related imbalance",
+  Vata: "air or dryness-related imbalance",
+  Rasa: "taste profile",
+  Guna: "qualities",
+  Vipaka: "post-digestion effect",
+  Prabhav: "special traditional action",
+};
+
+const toPlainLanguage = (value?: string) => {
+  if (!value) return "";
+  return Object.entries(plainLanguageTerms).reduce(
+    (text, [term, replacement]) => text.replace(new RegExp(`\\b${term}\\b`, "g"), replacement),
+    value
+  );
+};
+
 const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
   const [symptoms, setSymptoms] = useState("");
   const [location, setLocation] = useState("");
@@ -66,7 +87,7 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
           disabled={loading || !symptoms.trim()}
           className="w-full golden-glow bg-primary hover:bg-secondary text-primary-foreground"
         >
-          {loading ? <><Loader2 className="animate-spin mr-2" size={16} /> Analyzing with AI (446 conditions database)...</> : <><Search className="mr-2" size={16} /> Find Remedies</>}
+          {loading ? <><Loader2 className="animate-spin mr-2" size={16} /> Analyzing Suitable Remedies ....</> : <><Search className="mr-2" size={16} /> Find Remedies</>}
         </Button>
       </form>
 
@@ -81,13 +102,13 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
               {result.doshaAnalysis && (
                 <div className="mb-3">
                   <h4 className="font-semibold text-sm text-accent mb-1">Dosha Imbalance</h4>
-                  <p className="text-sm text-foreground/80">{result.doshaAnalysis}</p>
+                  <p className="text-sm text-foreground/80">{toPlainLanguage(result.doshaAnalysis)}</p>
                 </div>
               )}
               {result.prakritiInsight && (
                 <div>
                   <h4 className="font-semibold text-sm text-accent mb-1">Constitution Insight</h4>
-                  <p className="text-sm text-foreground/80">{result.prakritiInsight}</p>
+                  <p className="text-sm text-foreground/80">{toPlainLanguage(result.prakritiInsight)}</p>
                 </div>
               )}
               {result.severity && (
@@ -122,27 +143,27 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
               <div className="space-y-4 text-sm">
                 <div>
                   <h4 className="font-semibold text-accent mb-1">🧠 Why Recommended</h4>
-                  <p className="text-foreground/80">{plant.reason}</p>
+                  <p className="text-foreground/80">{toPlainLanguage(plant.reason)}</p>
                 </div>
                 <div>
                   <h4 className="font-semibold text-accent mb-1">⚙️ How It Works</h4>
-                  <p className="text-foreground/80">{plant.mechanism}</p>
+                  <p className="text-foreground/80">{toPlainLanguage(plant.mechanism)}</p>
                 </div>
                 {plant.doshaEffect && (
                   <div>
                     <h4 className="font-semibold text-accent mb-1">🕉️ Dosha Effect</h4>
-                    <p className="text-foreground/80">{plant.doshaEffect}</p>
+                    <p className="text-foreground/80">{toPlainLanguage(plant.doshaEffect)}</p>
                   </div>
                 )}
                 <div>
                   <h4 className="font-semibold text-accent mb-1">🏡 Safe Home Remedy</h4>
-                  <p className="text-foreground/80">{plant.remedy}</p>
+                  <p className="text-foreground/80">{toPlainLanguage(plant.remedy)}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
                   <h4 className="font-semibold text-destructive mb-1 flex items-center gap-1">
                     <AlertTriangle size={14} /> Precautions
                   </h4>
-                  <p className="text-foreground/80">{plant.precautions}</p>
+                  <p className="text-foreground/80">{toPlainLanguage(plant.precautions)}</p>
                 </div>
               </div>
             </div>
@@ -156,7 +177,7 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
                   <h4 className="font-semibold text-sm text-accent mb-2 flex items-center gap-2">
                     <Salad size={16} /> Diet & Lifestyle
                   </h4>
-                  <p className="text-sm text-foreground/80">{result.dietRecommendations}</p>
+                   <p className="text-sm text-foreground/80">{toPlainLanguage(result.dietRecommendations)}</p>
                 </div>
               )}
               {result.yogaRecommendations && (
@@ -164,7 +185,7 @@ const RemedyFinder = ({ onBack }: { onBack: () => void }) => {
                   <h4 className="font-semibold text-sm text-accent mb-2 flex items-center gap-2">
                     <Dumbbell size={16} /> Yoga & Therapy
                   </h4>
-                  <p className="text-sm text-foreground/80">{result.yogaRecommendations}</p>
+                   <p className="text-sm text-foreground/80">{toPlainLanguage(result.yogaRecommendations)}</p>
                 </div>
               )}
             </div>
