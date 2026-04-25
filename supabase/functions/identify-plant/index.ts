@@ -6,6 +6,38 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const doshaPlain: Record<string, string> = {
+  vata: "air/movement imbalance such as dryness, worry, restlessness, pain, or poor sleep",
+  pitta: "heat-related imbalance such as acidity, burning, inflammation, or irritability",
+  kapha: "heaviness/mucus imbalance such as congestion, sluggishness, or excess mucus",
+};
+
+const propertyPlain: Record<string, string> = {
+  tikta: "bitter taste that supports cleansing and lightness",
+  kashaya: "astringent taste that helps tone tissues and dry excess fluid",
+  madhura: "sweet nourishing effect that supports strength and recovery",
+  katu: "pungent action that helps clear congestion and stimulate digestion",
+  guru: "heavy/nourishing quality",
+  snigdha: "moistening quality",
+  laghu: "light/easy-to-digest quality",
+  ruksha: "drying quality",
+  medhya: "supports memory, focus, and calm mental function",
+  balya: "supports strength and stamina",
+  rasayan: "supports rejuvenation and resilience",
+  rasayana: "supports rejuvenation and resilience",
+  vrishya: "supports vitality",
+  jwaraghna: "traditionally supports fever and heat management",
+};
+
+function explain(values: string[] | null | undefined, fallback = "") {
+  const out = (values || []).filter(Boolean).map((v) => propertyPlain[String(v).toLowerCase().trim()] || String(v).toLowerCase());
+  return out.length ? out.join("; ") : fallback;
+}
+
+function explainDoshas(values: string[] | null | undefined) {
+  return (values || []).filter(Boolean).map((v) => doshaPlain[String(v).toLowerCase().trim()] || String(v).toLowerCase()).join(" and ");
+}
+
 async function callVisionAI(systemPrompt: string, userText: string, imageDataUrl: string) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const OPENROUTER_KEY = Deno.env.get("AI_GATEWAY_KEY");
