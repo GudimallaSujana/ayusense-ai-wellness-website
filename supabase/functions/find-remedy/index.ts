@@ -45,6 +45,49 @@ function uniqueByName(items: any[]) {
   });
 }
 
+const doshaPlain: Record<string, string> = {
+  vata: "air/movement imbalance, usually felt as dryness, worry, restlessness, pain, or disturbed sleep",
+  pitta: "heat-related imbalance, usually felt as acidity, inflammation, irritability, burning, or excess intensity",
+  kapha: "heaviness/mucus imbalance, usually felt as congestion, sluggishness, heaviness, or excess mucus",
+};
+
+const rasaPlain: Record<string, string> = {
+  tikta: "bitter taste, which often supports cleansing and lightness",
+  kashaya: "astringent taste, which helps dry excess fluid and tone tissues",
+  madhura: "sweet nourishing taste, which supports strength and recovery",
+  katu: "pungent taste, which helps clear congestion and stimulate digestion",
+  amla: "sour taste, which can stimulate appetite but may increase acidity",
+  lavana: "salty taste, which can support softness but may worsen swelling or blood pressure when overused",
+};
+
+const gunaPlain: Record<string, string> = {
+  guru: "heavy/nourishing quality",
+  snigdha: "unctuous/moistening quality",
+  laghu: "light/easy-to-digest quality",
+  ruksha: "drying quality",
+  tikshna: "sharp/penetrating quality",
+  manda: "gentle/slow quality",
+  sheeta: "cooling quality",
+  ushna: "warming quality",
+};
+
+const prabhavPlain: Record<string, string> = {
+  medhya: "supports memory, focus, and calm mental function",
+  balya: "supports strength and stamina",
+  rasayan: "supports rejuvenation and long-term resilience",
+  rasayana: "supports rejuvenation and long-term resilience",
+  vrishya: "supports reproductive vitality",
+  jwaraghna: "traditionally supports fever and heat management",
+  nidrajanana: "supports sleep",
+};
+
+function explainList(values: string[] | null | undefined, dictionary: Record<string, string>) {
+  return (values || [])
+    .filter(Boolean)
+    .map((value) => dictionary[String(value).toLowerCase().trim()] || String(value).toLowerCase())
+    .join("; ");
+}
+
 async function callAI(systemPrompt: string, userMessage: string) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const OPENROUTER_KEY = Deno.env.get("AI_GATEWAY_KEY");
