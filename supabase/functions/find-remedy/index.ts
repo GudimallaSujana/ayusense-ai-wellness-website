@@ -16,17 +16,9 @@ function keywords(value: string): string[] {
 
 function scoreDisease(disease: any, terms: string[]): number {
   const weightedText = [
-    disease.disease,
-    disease.disease,
-    disease.symptoms,
-    disease.symptoms,
-    disease.diagnosis,
-    disease.doshas,
-    disease.prakriti,
-    disease.risk_factors,
-    disease.seasonal_variation,
+    disease.disease, disease.disease, disease.symptoms, disease.symptoms,
+    disease.diagnosis, disease.doshas, disease.prakriti, disease.risk_factors, disease.seasonal_variation,
   ].filter(Boolean).join(" ").toLowerCase();
-
   return terms.reduce((score, term) => {
     if (weightedText.includes(term)) return score + (disease.disease?.toLowerCase().includes(term) ? 4 : 2);
     return score;
@@ -53,6 +45,49 @@ function uniqueByName(items: any[]) {
   });
 }
 
+async function callOpenRouter(systemPrompt: string, userMessage: string) {
+  const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
+  const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions";
+  if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
+
+  const models = [
+    "mistralai/mistral-7b-instruct:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "openchat/openchat-7b:free",
+    "mistralai/mistral-7b-instruct",
+  ];
+
+  let lastErr = "";
+  for (const model of models) {
+    const resp = await fetch(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${AI_GATEWAY_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ayusense.app",
+        "X-Title": "AyuSense",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        temperature: 0.3,
+        max_tokens: 2048,
+      }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return data.choices?.[0]?.message?.content || "";
+    }
+    lastErr = `${resp.status} ${await resp.text()}`;
+    console.error(`OpenRouter model ${model} failed:`, lastErr);
+    if (resp.status !== 429 && resp.status !== 402 && resp.status !== 404) break;
+  }
+  throw new Error(`OpenRouter error: ${lastErr}`);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -60,21 +95,10 @@ serve(async (req) => {
     const { symptoms, location } = await req.json();
     if (!symptoms) throw new Error("No symptoms provided");
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!
-    );
-
-    const { data: diseases } = await supabase
-      .from("diseases")
-      .select("*");
-
-    const { data: herbs } = await supabase
-      .from("herbs")
-      .select("name, preview, pacify, aggravate, tridosha, rasa, guna, virya, vipaka, prabhav");
+    const { data: diseases } = await supabase.from("diseases").select("*");
+    const { data: herbs } = await supabase.from("herbs").select("name, preview, pacify, aggravate, tridosha, rasa, guna, virya, vipaka, prabhav");
 
     const diseaseRows = diseases || [];
     const herbRows = herbs || [];
@@ -84,126 +108,92 @@ serve(async (req) => {
       .sort((a: any, b: any) => b._matchScore - a._matchScore);
 
     const matchedDiseases = rankedDiseases.filter((d: any) => d._matchScore > 0).slice(0, 12);
-    const contextDiseases = matchedDiseases.length > 0 ? matchedDiseases : rankedDiseases.slice(0, 20);
+    const contextDiseases = matchedDiseases.length > 0 ? matchedDiseases : rankedDiseases.slice(0, 12);
 
     const diseaseHerbNames = contextDiseases.flatMap((d: any) => [
-      ...splitNames(d.ayurvedic_herbs),
-      ...splitNames(d.herbal_remedies),
-      ...splitNames(d.formulation),
+      ...splitNames(d.ayurvedic_herbs), ...splitNames(d.herbal_remedies), ...splitNames(d.formulation),
     ]);
-    const candidateHerbs = uniqueByName(diseaseHerbNames.map((name) => findHerbByName(herbRows, name)).filter(Boolean)).slice(0, 30);
-    const herbContextRows = candidateHerbs.length > 0 ? candidateHerbs : herbRows.slice(0, 60);
+    const candidateHerbs = uniqueByName(diseaseHerbNames.map((name) => findHerbByName(herbRows, name)).filter(Boolean)).slice(0, 15);
+    const herbContextRows = candidateHerbs.length > 0 ? candidateHerbs : herbRows.slice(0, 10);
 
-    const diseaseContext = contextDiseases.map((d: any) => 
-      `${d.disease}|Symptoms:${d.symptoms}|Score:${d._matchScore || 0}|Herbs:${d.ayurvedic_herbs}|Formulation:${d.formulation}|Doshas:${d.doshas}|Prakriti:${d.prakriti}|Diet:${d.diet_lifestyle}|Yoga:${d.yoga_therapy}|Remedies:${d.herbal_remedies}|Severity:${d.severity}|Duration:${d.duration}|Prevention:${d.prevention}|Recommendations:${d.patient_recommendations}`
+    // Slim context: only top 3 diseases + top 6 herbs to save tokens
+    const slimDiseases = contextDiseases.slice(0, 3);
+    const slimHerbs = herbContextRows.slice(0, 6);
+
+    const diseaseContext = slimDiseases.map((d: any) =>
+      `- ${d.disease} | Symptoms: ${d.symptoms} | Herbs: ${d.ayurvedic_herbs} | Formulation: ${d.formulation} | Doshas: ${d.doshas} | Diet: ${d.diet_lifestyle} | Yoga: ${d.yoga_therapy}`
     ).join("\n");
 
-    const herbContext = herbContextRows.map((h: any) =>
-      `${h.name}|Preview:${h.preview || ""}|Pacifies:${(h.pacify||[]).join(",")}|Aggravates:${(h.aggravate||[]).join(",")}|Rasa:${(h.rasa||[]).join(",")}|Guna:${(h.guna||[]).join(",")}|Virya:${h.virya}|Vipaka:${h.vipaka}|Prabhav:${(h.prabhav||[]).join(",")}`
+    const herbContext = slimHerbs.map((h: any) =>
+      `- ${h.name}: pacifies ${(h.pacify||[]).join(",")}, aggravates ${(h.aggravate||[]).join(",")}, taste ${(h.rasa||[]).join(",")}, effect ${h.virya}`
     ).join("\n");
 
-    const systemPrompt = `You are AyuSense, an Ayurvedic remedy advisor. Use ONLY the disease and herb data below. Do not invent diseases, herbs, formulations, or dosha facts. Explain all Ayurvedic terms in simple human language. Do not output standalone technical words like Pitta, Kapha, Vata, Ushna, Virya, Rasa, Guna, Vipaka, or Prabhav without explaining what they mean in the same sentence.
+    const systemPrompt = `You are an Ayurvedic expert. Explain remedies in simple human language. Never output untranslated Sanskrit terms (Pitta, Kapha, Vata, Ushna, Virya, Rasa, Guna, Vipaka, Prabhav) without a plain-English explanation in the same sentence. Respond ONLY with valid JSON.`;
 
-=== BEST MATCHING DISEASE RECORDS (${contextDiseases.length}) ===
+    const userMessage = `Symptoms: ${symptoms}${location ? `\nLocation: ${location}` : ""}
+
+Matched conditions from database:
 ${diseaseContext}
 
-=== RELEVANT HERB RECORDS (${herbContextRows.length}) ===
+Available herbs from database:
 ${herbContext}
 
-RULES:
-1. Match broadly but precisely: include every disease record that shares symptom meaning, body system, dosha pattern, or likely presentation.
-2. Return 6 to 10 plant recommendations whenever database data supports them.
-3. Return up to 12 matched conditions, ordered by relevance.
-4. Prefer herbs and formulations explicitly listed in the matched disease records.
-5. Cross-reference herb actions from the herb records.
-6. If exact matching is weak, include closest database matches and explain uncertainty.
-7. Safety guidance must be educational and advise consulting a qualified practitioner.
-
-Respond only in this JSON format:
+Return JSON in this exact shape (use only herbs from the list above):
 {
-  "matchedConditions": ["Disease names matched from database"],
+  "matchedConditions": ["disease names"],
   "plants": [
     {
-      "name": "Herb name from database",
-      "reason": "Why this herb is recommended based on matched database records",
-      "mechanism": "Ayurvedic mechanism from herb database",
-      "doshaEffect": "Which doshas it pacifies/aggravates",
-      "remedy": "Exact formulation or remedy from disease database",
-      "precautions": "Safety information",
+      "name": "herb name",
+      "reason": "why this herb helps in plain language",
+      "mechanism": "how it works in simple words",
+      "doshaEffect": "which body imbalance it calms, in plain English",
+      "remedy": "how to prepare and take it",
+      "precautions": "safety notes",
       "confidence": 85
     }
   ],
-  "doshaAnalysis": "Dosha analysis based on symptoms and matched records",
-  "prakritiInsight": "Constitution insight from database",
-  "dietRecommendations": "Diet recommendations from matched records",
-  "yogaRecommendations": "Yoga recommendations from matched records",
-  "alternatives": ["More alternative herbs from database"],
-  "severity": "Severity from database",
-  "duration": "Treatment duration from database",
-  "disclaimer": "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only."
-}`;
+  "doshaAnalysis": "plain-language body imbalance analysis",
+  "dietRecommendations": "diet advice",
+  "yogaRecommendations": "yoga advice",
+  "alternatives": ["other herb names"],
+  "disclaimer": "Always consult a qualified Ayurvedic practitioner."
+}
 
-    const userMessage = location 
-      ? `Symptoms: ${symptoms}\nLocation: ${location}\nReturn broader precise matches and more database-backed remedies.`
-      : `Symptoms: ${symptoms}\nReturn broader precise matches and more database-backed remedies.`;
+Return 6-10 plants. Keep language simple and human-friendly.`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userMessage}` }] }],
-        generationConfig: {
-          temperature: 0.25,
-          maxOutputTokens: 4096,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const status = response.status;
-      const errorText = await response.text();
-      console.error("Gemini API error:", status, errorText);
-      if (status >= 500) {
-        return new Response(JSON.stringify({
-          matchedConditions: contextDiseases.slice(0, 8).map((d: any) => d.disease),
-          plants: [],
-          alternatives: candidateHerbs.slice(0, 10).map((h: any) => h.name),
-          disclaimer: "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only.",
-          error: "Remedy analysis is temporarily unavailable. Please try again in a moment.",
-        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (status === 429 || status === 402) return new Response(JSON.stringify({
+    let content = "";
+    try {
+      content = await callOpenRouter(systemPrompt, userMessage);
+    } catch (aiErr) {
+      console.error("AI gateway failed, using database fallback:", aiErr);
+      const fallbackPlants = candidateHerbs.slice(0, 10).map((h: any, index: number) => {
+        const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || contextDiseases[0];
+        return {
+          name: h.name,
+          reason: `Recommended from database match for ${related?.disease || "your symptoms"}.`,
+          mechanism: `Taste: ${(h.rasa || []).join(", ") || "n/a"}; warming or cooling effect: ${h.virya || "n/a"}.`,
+          doshaEffect: `May help calm: ${(h.pacify || []).join(", ") || "n/a"}. May worsen: ${(h.aggravate || []).join(", ") || "n/a"}.`,
+          remedy: related?.formulation || related?.herbal_remedies || "Use under guidance from a qualified practitioner.",
+          precautions: "Avoid during pregnancy, allergies, or with prescription medicines without guidance.",
+          confidence: Math.max(68, 88 - index * 2),
+          verified: true,
+        };
+      });
+      return new Response(JSON.stringify({
         matchedConditions: contextDiseases.slice(0, 12).map((d: any) => d.disease),
-        plants: candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-          const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase()) || (d.herbal_remedies || "").toLowerCase().includes(h.name.toLowerCase())) || contextDiseases[0];
-          return {
-            name: h.name,
-            reason: `Recommended from database match for ${related?.disease || "the closest matched condition"}.`,
-            mechanism: `Taste profile: ${(h.rasa || []).join(", ") || "not specified"}; qualities: ${(h.guna || []).join(", ") || "not specified"}; body effect: ${h.virya || "not specified"}; after-digestion effect: ${h.vipaka || "not specified"}.`,
-            doshaEffect: `May help calm: ${(h.pacify || []).join(", ") || "not specified"}. May increase imbalance in: ${(h.aggravate || []).join(", ") || "not specified"}.`,
-            remedy: related?.formulation || related?.herbal_remedies || "Use only under guidance from a qualified Ayurvedic practitioner.",
-            precautions: "Avoid self-medication during pregnancy, chronic disease, allergies, or when taking prescription medicines.",
-            confidence: Math.max(68, Math.min(92, 88 - index * 2)),
-            verified: true,
-          };
-        }),
+        plants: fallbackPlants,
         alternatives: candidateHerbs.slice(0, 12).map((h: any) => h.name),
-        doshaAnalysis: "The AI explanation service is temporarily limited, so these results are based directly on the closest matching disease and herb records in the database.",
+        doshaAnalysis: "Results based on closest matching database records.",
         disclaimer: "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only.",
-        warning: status === 429 ? "Gemini API quota is exhausted. Replace or recharge GEMINI_API_KEY to restore full AI explanations." : "Gemini billing or credits are exhausted. Replace or recharge GEMINI_API_KEY to restore full AI explanations.",
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`Gemini API error: ${status}`);
     }
-
-    const data = await response.json();
-    const content = data.candidates?.[0]?.content?.parts?.map((part: any) => part.text || "").join("\n") || "";
 
     let parsed: any;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
     } catch {
-      parsed = { matchedConditions: [], plants: [], alternatives: [], error: "Failed to parse AI response" };
+      parsed = { matchedConditions: [], plants: [], alternatives: [] };
     }
 
     const verifiedConditionNames = contextDiseases.slice(0, 12).map((d: any) => d.disease);
@@ -212,15 +202,15 @@ Respond only in this JSON format:
 
     const existingPlants = Array.isArray(parsed.plants) ? parsed.plants : [];
     const fallbackPlants = candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-      const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase()) || (d.herbal_remedies || "").toLowerCase().includes(h.name.toLowerCase())) || contextDiseases[0];
+      const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || contextDiseases[0];
       return {
         name: h.name,
-        reason: `Recommended from database match for ${related?.disease || "the closest matched condition"}.`,
-        mechanism: `Rasa: ${(h.rasa || []).join(", ") || "not specified"}; Guna: ${(h.guna || []).join(", ") || "not specified"}; Virya: ${h.virya || "not specified"}; Vipaka: ${h.vipaka || "not specified"}.`,
-        doshaEffect: `Pacifies: ${(h.pacify || []).join(", ") || "not specified"} | Aggravates: ${(h.aggravate || []).join(", ") || "not specified"}`,
-        remedy: related?.formulation || related?.herbal_remedies || "Use only under guidance from a qualified Ayurvedic practitioner.",
-        precautions: "Avoid self-medication during pregnancy, chronic disease, allergies, or when taking prescription medicines.",
-        confidence: Math.max(68, Math.min(92, 88 - index * 2)),
+        reason: `Recommended from database match for ${related?.disease || "your symptoms"}.`,
+        mechanism: `Taste: ${(h.rasa || []).join(", ") || "n/a"}; effect: ${h.virya || "n/a"}.`,
+        doshaEffect: `May help calm: ${(h.pacify || []).join(", ") || "n/a"}.`,
+        remedy: related?.formulation || related?.herbal_remedies || "Use under practitioner guidance.",
+        precautions: "Avoid self-medication during pregnancy or with prescription medicines.",
+        confidence: Math.max(68, 88 - index * 2),
         verified: true,
       };
     });
@@ -232,7 +222,7 @@ Respond only in this JSON format:
           ...p,
           name: matchedHerb.name,
           verified: true,
-          doshaEffect: `May help calm: ${(matchedHerb.pacify||[]).join(", ") || "not specified"}. May increase imbalance in: ${(matchedHerb.aggravate||[]).join(", ") || "not specified"}. Use with guidance if you are sensitive to heat, dryness, or heaviness.`,
+          doshaEffect: p.doshaEffect || `May help calm: ${(matchedHerb.pacify||[]).join(", ") || "n/a"}.`,
         };
       }
       return { ...p, verified: false };

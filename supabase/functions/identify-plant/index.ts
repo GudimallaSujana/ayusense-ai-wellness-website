@@ -6,6 +6,55 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function callOpenRouterVision(systemPrompt: string, userText: string, imageDataUrl: string) {
+  const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
+  const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions";
+  if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
+
+  // Free vision-capable models on OpenRouter (fall back through them)
+  const models = [
+    "meta-llama/llama-3.2-11b-vision-instruct:free",
+    "qwen/qwen-2-vl-7b-instruct:free",
+    "google/gemini-flash-1.5:free",
+  ];
+
+  let lastErr = "";
+  for (const model of models) {
+    const resp = await fetch(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${AI_GATEWAY_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ayusense.app",
+        "X-Title": "AyuSense",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: imageDataUrl } },
+            ],
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 1500,
+      }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return data.choices?.[0]?.message?.content || "";
+    }
+    lastErr = `${resp.status} ${await resp.text()}`;
+    console.error(`OpenRouter vision ${model} failed:`, lastErr);
+    if (resp.status !== 429 && resp.status !== 402 && resp.status !== 404) break;
+  }
+  throw new Error(`OpenRouter vision error: ${lastErr}`);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -13,206 +62,114 @@ serve(async (req) => {
     const { imageBase64 } = await req.json();
     if (!imageBase64) throw new Error("No image provided");
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!
-    );
-
-    // Fetch all herb names for the AI to match against
     const { data: herbs } = await supabase
       .from("herbs")
       .select("name, preview, pacify, aggravate, tridosha, rasa, guna, virya, vipaka, prabhav");
-
-    const herbNames = (herbs || []).map((h: any) => h.name);
-
-    // Also get disease data for cross-referencing
     const { data: diseases } = await supabase
       .from("diseases")
       .select("disease, ayurvedic_herbs, formulation, herbal_remedies, symptoms");
 
-    const systemPrompt = `You are AyuSense, a premium AI-powered Ayurvedic plant identification system. You are an expert botanist and Ayurvedic practitioner.
+    const herbNames = (herbs || []).map((h: any) => h.name);
 
-CRITICAL: You have access to a database of ${herbNames.length} medicinal herbs. You MUST try to match the plant in the image to one of these herbs. Here is the complete list of herb names in the database:
+    const systemPrompt = `You are an expert botanist and Ayurvedic practitioner. Identify medicinal plants from images and match them to a known herb database. Always respond with valid JSON only. Use plain human language, never raw Sanskrit terms without explanation.`;
+
+    const userText = `Identify this medicinal plant. Match it to ONE of these herb names from our database (use the EXACT name):
 
 ${herbNames.join(", ")}
 
-When analyzing a plant image:
-1. First identify the plant visually using morphological features
-2. Then MATCH it to the closest herb name from the database list above
-3. Use the EXACT name from the database (case-sensitive match)
-4. If no exact match, use fuzzy matching to find the closest name
-
-You MUST respond in this exact JSON format:
+Respond with JSON only:
 {
-  "plantName": "Exact name from database list (e.g., Tulsi, Amla, Ashwagandha)",
-  "scientificName": "Latin binomial name",
-  "family": "Botanical family",
-  "confidence": 92,
-  "features": ["List of visual features detected that led to identification"],
-  "ayurvedicProfile": {
-    "rasa": ["Taste qualities"],
-    "guna": ["Qualities"],
-    "virya": "Potency",
-    "vipaka": "Post-digestive effect",
-    "doshaEffect": {
-      "pacifies": ["Doshas it pacifies"],
-      "aggravates": ["Doshas it may aggravate"]
-    },
-    "prabhav": ["Special therapeutic actions"]
-  },
-  "benefits": ["Detailed health benefits"],
-  "remedies": ["Detailed safe home remedies with measurements"],
-  "climate": "Climate suitability",
-  "availability": "Regional availability",
-  "alternatives": ["Alternative plants from database"],
-  "precautions": ["Safety precautions"],
-  "traditionalUses": "Traditional Ayurvedic uses",
-  "whyIdentified": "Detailed explanation of visual analysis"
+  "plantName": "exact name from list",
+  "scientificName": "Latin name",
+  "family": "botanical family",
+  "confidence": 85,
+  "features": ["visible features"],
+  "benefits": ["health benefits in plain language"],
+  "remedies": ["safe home remedies with measurements"],
+  "climate": "climate suitability",
+  "availability": "where it grows",
+  "precautions": ["safety notes"],
+  "traditionalUses": "traditional uses in plain words",
+  "whyIdentified": "why you matched this plant"
 }
 
-If you cannot identify the plant, set confidence below 30 and explain what you see.`;
+If unsure, set confidence below 30.`;
 
-    // Step 1: AI identifies the plant
-    const imageData = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
-    const mimeType = imageBase64.match(/^data:(.*?);base64,/)?.[1] || "image/jpeg";
+    const imageDataUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: `${systemPrompt}\n\nIdentify this medicinal plant and match it to the database. Use the EXACT herb name from the provided list.` },
-              { inlineData: { mimeType, data: imageData } },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const status = response.status;
-      const errorText = await response.text();
-      console.error("Gemini API error:", status, errorText);
-      if (status >= 500) {
-        return new Response(JSON.stringify({
-          plantName: "No matching plant found in dataset",
-          scientificName: "",
-          family: "",
-          confidence: 0,
-          features: [],
-          benefits: [],
-          remedies: [],
-          climate: "",
-          availability: "",
-          alternatives: [],
-          precautions: ["The plant identification service is temporarily unavailable. Please try again in a moment."],
-          databaseMatch: false,
-          warning: "Plant identification is temporarily unavailable. No dataset match could be verified.",
-        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (status === 429) return new Response(JSON.stringify({ error: "Rate limited. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (status === 402) return new Response(JSON.stringify({ error: "Service credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`Gemini API error: ${status}`);
+    let content = "";
+    try {
+      content = await callOpenRouterVision(systemPrompt, userText, imageDataUrl);
+    } catch (aiErr) {
+      console.error("Vision AI failed:", aiErr);
+      return new Response(JSON.stringify({
+        plantName: "Identification unavailable",
+        confidence: 0,
+        features: [], benefits: [], remedies: [],
+        precautions: ["Plant identification service is temporarily busy. Please try again in a moment."],
+        databaseMatch: false,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-
-    const data = await response.json();
-    const content = data.candidates?.[0]?.content?.parts?.map((part: any) => part.text || "").join("\n") || "";
 
     let parsed: any;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
     } catch {
-      parsed = { plantName: "Unknown", confidence: 0, error: "Failed to parse AI response" };
+      parsed = { plantName: "Unknown", confidence: 0 };
     }
 
-    // Step 2: Enrich with database data
     const identifiedName = parsed.plantName || "";
-    
-    // Fuzzy match: find the closest herb from database
     const nameLower = identifiedName.toLowerCase().trim();
     let matchedHerb = (herbs || []).find((h: any) => h.name.toLowerCase() === nameLower);
-    
     if (!matchedHerb) {
-      // Try partial matching
-      matchedHerb = (herbs || []).find((h: any) => 
+      matchedHerb = (herbs || []).find((h: any) =>
         nameLower.includes(h.name.toLowerCase()) || h.name.toLowerCase().includes(nameLower)
       );
     }
-    
     if (!matchedHerb) {
-      // Try matching common name variations (e.g., "Tulsi / Holy Basil" -> "Tulsi")
-      const firstWord = nameLower.split(/[\s\/,\(]+/)[0].trim();
-      matchedHerb = (herbs || []).find((h: any) => h.name.toLowerCase() === firstWord);
+      const firstWord = nameLower.split(/[\s\/,\(]+/)[0]?.trim();
+      if (firstWord) matchedHerb = (herbs || []).find((h: any) => h.name.toLowerCase() === firstWord);
     }
 
-    // Enrich AI response with real database data
     if (matchedHerb) {
-      parsed.plantName = matchedHerb.name; // Use exact DB name
+      parsed.plantName = matchedHerb.name;
       parsed.databaseMatch = true;
-      
-      // Override Ayurvedic profile with verified database data
       parsed.ayurvedicProfile = {
-        rasa: matchedHerb.rasa || parsed.ayurvedicProfile?.rasa || [],
-        guna: matchedHerb.guna || parsed.ayurvedicProfile?.guna || [],
-        virya: matchedHerb.virya || parsed.ayurvedicProfile?.virya || "",
-        vipaka: matchedHerb.vipaka || parsed.ayurvedicProfile?.vipaka || "",
+        rasa: matchedHerb.rasa || [],
+        guna: matchedHerb.guna || [],
+        virya: matchedHerb.virya || "",
+        vipaka: matchedHerb.vipaka || "",
         doshaEffect: {
-          pacifies: matchedHerb.pacify || parsed.ayurvedicProfile?.doshaEffect?.pacifies || [],
-          aggravates: matchedHerb.aggravate || parsed.ayurvedicProfile?.doshaEffect?.aggravates || [],
+          pacifies: matchedHerb.pacify || [],
+          aggravates: matchedHerb.aggravate || [],
         },
-        prabhav: matchedHerb.prabhav || parsed.ayurvedicProfile?.prabhav || [],
+        prabhav: matchedHerb.prabhav || [],
       };
+      if (matchedHerb.preview) parsed.description = matchedHerb.preview;
 
-      if (matchedHerb.preview) {
-        parsed.description = matchedHerb.preview;
-      }
-
-      // Find diseases this herb treats from the disease database
-      const relatedDiseases = (diseases || []).filter((d: any) => {
-        const herbsStr = (d.ayurvedic_herbs || "").toLowerCase();
-        return herbsStr.includes(matchedHerb.name.toLowerCase());
-      });
-
+      const relatedDiseases = (diseases || []).filter((d: any) =>
+        (d.ayurvedic_herbs || "").toLowerCase().includes(matchedHerb.name.toLowerCase())
+      );
       if (relatedDiseases.length > 0) {
         parsed.treatedConditions = relatedDiseases.map((d: any) => ({
-          disease: d.disease,
-          symptoms: d.symptoms,
-          formulation: d.formulation,
-          herbalRemedies: d.herbal_remedies,
+          disease: d.disease, symptoms: d.symptoms,
+          formulation: d.formulation, herbalRemedies: d.herbal_remedies,
         }));
-
-        // Enrich remedies with database formulations
-        const dbRemedies = relatedDiseases
-          .filter((d: any) => d.formulation)
-          .map((d: any) => `For ${d.disease}: ${d.formulation}`);
-        if (dbRemedies.length > 0) {
-          parsed.remedies = [...(parsed.remedies || []), ...dbRemedies];
-        }
+        const dbRemedies = relatedDiseases.filter((d: any) => d.formulation).map((d: any) => `For ${d.disease}: ${d.formulation}`);
+        if (dbRemedies.length > 0) parsed.remedies = [...(parsed.remedies || []), ...dbRemedies];
       }
 
-      // Find alternative herbs with similar dosha effects
-      const samePackify = matchedHerb.pacify || [];
+      const samePacify = matchedHerb.pacify || [];
       const alternatives = (herbs || [])
-        .filter((h: any) => 
-          h.name !== matchedHerb.name && 
-          (h.pacify || []).some((p: string) => samePackify.includes(p))
-        )
-        .slice(0, 5)
-        .map((h: any) => h.name);
-      if (alternatives.length > 0) {
-        parsed.alternatives = alternatives;
-      }
+        .filter((h: any) => h.name !== matchedHerb.name && (h.pacify || []).some((p: string) => samePacify.includes(p)))
+        .slice(0, 5).map((h: any) => h.name);
+      if (alternatives.length > 0) parsed.alternatives = alternatives;
     } else {
       parsed.databaseMatch = false;
-      parsed.warning = "This plant was not found in our verified database. Results are AI-generated and should be verified.";
+      parsed.warning = "This plant was not found in our verified database. Results are AI-generated.";
     }
 
     return new Response(JSON.stringify(parsed), {
