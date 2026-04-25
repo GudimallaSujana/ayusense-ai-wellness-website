@@ -198,7 +198,7 @@ serve(async (req) => {
 2. Every herb must have a UNIQUE explanation tailored to its OWN database description, properties, preparation, and the user's symptoms — no copy-paste, no template phrases, no repeated sentence structure across herbs.
 3. Precautions must be specific to the herb's warming/cooling action, the body imbalance it may worsen, the suggested dose/preparation, and common medicine/pregnancy safety concerns. Never return the same generic precaution for every herb.
 4. Ground every claim in the database facts provided. Do not invent herbs.
-4. Respond with ONLY valid JSON. No markdown, no commentary.`;
+5. Respond with ONLY valid JSON. No markdown, no commentary.`;
 
     const userMessage = `The user reports: "${symptoms}"${location ? `\nLocation: ${location}` : ""}
 
@@ -315,7 +315,7 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
     } catch (aiErr) {
       console.error("AI gateway failed, using database fallback:", aiErr);
       const fallbackPlants = candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-        const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || primaryDisease;
+        const related = contextDiseases.find((d: any) => [d.ayurvedic_herbs, d.herbal_remedies, d.formulation].some((field) => String(field || "").toLowerCase().includes(h.name.toLowerCase()))) || primaryDisease;
         return buildDbPlant(h, related, index);
       });
       return new Response(JSON.stringify({
@@ -347,17 +347,25 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
     const existingPlants = Array.isArray(parsed.plants) ? parsed.plants : [];
     const dbPlantsByName = new Map(
       candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-        const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || primaryDisease;
+        const related = contextDiseases.find((d: any) => [d.ayurvedic_herbs, d.herbal_remedies, d.formulation].some((field) => String(field || "").toLowerCase().includes(h.name.toLowerCase()))) || primaryDisease;
         return [h.name.toLowerCase(), buildDbPlant(h, related, index)];
       })
     );
 
     // Merge: prefer AI text, but ensure every field is filled from DB if AI omitted/duplicated it
-    const seenSentences = new Set<string>();
-    const dedupe = (text: string, fallback: string) => {
-      const key = (text || "").trim().toLowerCase();
-      if (!key || seenSentences.has(key)) return fallback;
-      seenSentences.add(key);
+    const seenFieldIdeas = new Set<string>();
+    const dedupe = (text: string, fallback: string, herbName: string, field: string) => {
+      const raw = (text || "").trim();
+      const key = raw.toLowerCase()
+        .replace(new RegExp(herbName.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "the herb")
+        .replace(/\b(ashwagandha|brahmi|tulsi|arjuna|licorice|lavender|jatamansi)\b/g, "the herb")
+        .replace(/\s+/g, " ");
+      const tooGeneric = /traditionally chosen for .*directly addresses the imbalance/i.test(raw)
+        || /avoid .*during pregnancy, breastfeeding, or alongside prescription medicines/i.test(raw)
+        || raw.length < 45;
+      const scopedKey = `${field}:${key}`;
+      if (!raw || tooGeneric || seenFieldIdeas.has(scopedKey)) return fallback;
+      seenFieldIdeas.add(scopedKey);
       return text;
     };
 
@@ -367,11 +375,11 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
       const base = dbVersion || p;
       return {
         name: matchedHerb?.name || p.name,
-        reason: dedupe(p.reason, base.reason),
-        mechanism: dedupe(p.mechanism, base.mechanism),
-        doshaEffect: dedupe(p.doshaEffect, base.doshaEffect),
-        remedy: dedupe(p.remedy, base.remedy),
-        precautions: dedupe(p.precautions, base.precautions),
+        reason: dedupe(p.reason, base.reason, matchedHerb?.name || p.name || "", "reason"),
+        mechanism: dedupe(p.mechanism, base.mechanism, matchedHerb?.name || p.name || "", "mechanism"),
+        doshaEffect: dedupe(p.doshaEffect, base.doshaEffect, matchedHerb?.name || p.name || "", "dosha"),
+        remedy: dedupe(p.remedy, base.remedy, matchedHerb?.name || p.name || "", "remedy"),
+        precautions: dedupe(p.precautions, base.precautions, matchedHerb?.name || p.name || "", "precaution"),
         confidence: typeof p.confidence === "number" ? p.confidence : (base.confidence || Math.max(70, 92 - idx * 2)),
         verified: !!matchedHerb,
       };
