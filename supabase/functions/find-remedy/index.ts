@@ -250,8 +250,18 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
 
     const preparationFor = (h: any, related: any) => {
       const formulation = String(related?.formulation || "").trim();
-      if (formulation && formulation.toLowerCase() !== "none specific") return formulation;
+      if (formulation && formulation.toLowerCase() !== "none specific" && formulation.toLowerCase().includes(h.name.toLowerCase())) return formulation;
+      const herbal = String(related?.herbal_remedies || "").trim();
+      if (herbal && herbal.toLowerCase() !== "none specific" && herbal.toLowerCase().includes(h.name.toLowerCase())) return herbal;
       return `Use ${h.name} as a mild tea or powder, starting with a small dose after food and adjusting only with practitioner guidance.`;
+    };
+
+    const bestRelatedDisease = (h: any) => {
+      const herbName = h.name.toLowerCase();
+      return contextDiseases.find((d: any) => String(d.formulation || "").toLowerCase().includes(herbName))
+        || contextDiseases.find((d: any) => String(d.herbal_remedies || "").toLowerCase().includes(herbName))
+        || contextDiseases.find((d: any) => String(d.ayurvedic_herbs || "").toLowerCase().includes(herbName))
+        || primaryDisease;
     };
 
     const precautionsFor = (h: any, related: any, userSymptoms: string) => {
@@ -282,10 +292,11 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
       const qualityLine = explainList(qualities, gunaPlain) || "its recorded physical qualities";
       const viryaLine = h.virya ? `${String(h.virya).toLowerCase().includes("ush") || String(h.virya).toLowerCase().includes("hot") ? "warming" : "cooling"} body action` : "balanced action";
       const focus = symptomFocus(related);
-      const description = String(h.preview || "").replace(/^.+?\)\s*is\s*/i, "").replace(/^.+?\s+is\s*/i, "");
+      const description = String(h.preview || "").replace(/\s+/g, " ").trim();
+      const profileSentence = description ? `The database describes it as ${description.replace(new RegExp(`^${h.name}\\s*(\\([^)]*\\))?\\s+is\\s+`, "i"), "").replace(/\.$/, "")}.` : `${h.name} is recorded in the database for this condition.`;
       return {
         name: h.name,
-        reason: `${h.name} fits ${related?.disease || "your symptoms"} because your complaint connects with ${focus || "the symptom pattern in the database"}. ${description || `${h.name} is recorded in the database for this condition`}, so it is recommended here for a plant-specific role rather than as a generic stress herb.`,
+        reason: `${h.name} fits ${related?.disease || "your symptoms"} because the matched database symptoms include ${focus || "the symptom pattern you described"}. ${profileSentence} This gives it a different role from the other herbs in this recommendation list.`,
         mechanism: `${h.name} works through ${tasteLine}, along with ${qualityLine} and a ${viryaLine}. ${specialActions ? `Its special traditional actions ${specialActions}, which explains why it is suited to this symptom pattern.` : `These properties explain how it supports the body in this symptom pattern.`}`,
         doshaEffect: pacifies.length || aggravates.length
           ? `Helps calm ${explainDoshaList(pacifies) || "general imbalance"}${aggravates.length ? `; may slightly increase ${explainDoshaList(aggravates)} if overused` : ""}.`
