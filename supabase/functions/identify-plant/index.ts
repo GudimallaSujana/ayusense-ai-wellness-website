@@ -113,11 +113,11 @@ serve(async (req) => {
       .select("name, preview, pacify, aggravate, tridosha, rasa, guna, virya, vipaka, prabhav");
     const { data: diseases } = await supabase
       .from("diseases")
-      .select("disease, ayurvedic_herbs, formulation, herbal_remedies, symptoms");
+      .select("disease, ayurvedic_herbs, formulation, herbal_remedies, symptoms, doshas, diet_lifestyle, yoga_therapy");
 
     const herbNames = (herbs || []).map((h: any) => h.name);
 
-    const systemPrompt = `You are an expert botanist and Ayurvedic practitioner. Identify medicinal plants from images and match them to a known herb database. Always respond with valid JSON only. Use plain human language, never raw Sanskrit terms without explanation.`;
+    const systemPrompt = `You are an expert botanist and Ayurvedic practitioner. Identify medicinal plants from images and match them to a known herb database. Always respond with valid JSON only. Use plain human language, never raw Sanskrit terms without explanation. Benefits, remedies, precautions, and whyIdentified must be specific to the identified plant, not generic.`;
 
     const userText = `Identify this medicinal plant. Match it to ONE of these herb names from our database (use the EXACT name):
 
@@ -130,13 +130,13 @@ Respond with JSON only:
   "family": "botanical family",
   "confidence": 85,
   "features": ["visible features"],
-  "benefits": ["health benefits in plain language"],
-  "remedies": ["safe home remedies with measurements"],
+  "benefits": ["plant-specific health benefits in plain language"],
+  "remedies": ["plant-specific safe home remedies with measurements"],
   "climate": "climate suitability",
   "availability": "where it grows",
-  "precautions": ["safety notes"],
+  "precautions": ["specific safety notes based on this plant's action, dose, and body imbalance it may worsen"],
   "traditionalUses": "traditional uses in plain words",
-  "whyIdentified": "why you matched this plant"
+  "whyIdentified": "2–3 lines explaining the visible features that led to this identification and why this plant's known actions fit the database match"
 }
 
 If unsure, set confidence below 30.`;
