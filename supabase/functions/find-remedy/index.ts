@@ -128,50 +128,69 @@ serve(async (req) => {
     const candidateHerbs = uniqueByName(diseaseHerbNames.map((name) => findHerbByName(herbRows, name)).filter(Boolean)).slice(0, 15);
     const herbContextRows = candidateHerbs.length > 0 ? candidateHerbs : herbRows.slice(0, 10);
 
-    // Slim context: only top 3 diseases + top 6 herbs to save tokens
+    // Pair each candidate herb with its most relevant disease so AI can produce UNIQUE per-herb output
+    const primaryDisease = contextDiseases[0];
     const slimDiseases = contextDiseases.slice(0, 3);
-    const slimHerbs = herbContextRows.slice(0, 6);
+    const slimHerbs = herbContextRows.slice(0, 8);
+
+    const herbWithDisease = slimHerbs.map((h: any) => {
+      const related =
+        contextDiseases.find((d: any) =>
+          (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase()) ||
+          (d.herbal_remedies || "").toLowerCase().includes(h.name.toLowerCase())
+        ) || primaryDisease;
+      return { herb: h, disease: related };
+    });
 
     const diseaseContext = slimDiseases.map((d: any) =>
-      `- ${d.disease} | Symptoms: ${d.symptoms} | Herbs: ${d.ayurvedic_herbs} | Formulation: ${d.formulation} | Doshas: ${d.doshas} | Diet: ${d.diet_lifestyle} | Yoga: ${d.yoga_therapy}`
-    ).join("\n");
+      `• ${d.disease}\n   Symptoms: ${d.symptoms || "n/a"}\n   Doshas involved: ${d.doshas || "n/a"}\n   Prakriti: ${d.prakriti || "n/a"}\n   Diet & Lifestyle: ${d.diet_lifestyle || "n/a"}\n   Yoga & Therapy: ${d.yoga_therapy || "n/a"}`
+    ).join("\n\n");
 
-    const herbContext = slimHerbs.map((h: any) =>
-      `- ${h.name}: pacifies ${(h.pacify||[]).join(",")}, aggravates ${(h.aggravate||[]).join(",")}, taste ${(h.rasa||[]).join(",")}, effect ${h.virya}`
-    ).join("\n");
+    const herbContext = herbWithDisease.map(({ herb: h, disease: d }) =>
+      `• ${h.name} (for ${d?.disease || "general support"})\n   Calms (pacifies): ${(h.pacify||[]).join(", ") || "n/a"}\n   May worsen: ${(h.aggravate||[]).join(", ") || "n/a"}\n   Taste (rasa): ${(h.rasa||[]).join(", ") || "n/a"}\n   Qualities (guna): ${(h.guna||[]).join(", ") || "n/a"}\n   Potency (virya): ${h.virya || "n/a"}\n   Post-digestion (vipaka): ${h.vipaka || "n/a"}\n   Special action (prabhav): ${(h.prabhav||[]).join(", ") || "n/a"}\n   Suggested preparation: ${d?.formulation || d?.herbal_remedies || "n/a"}`
+    ).join("\n\n");
 
-    const systemPrompt = `You are an Ayurvedic expert. Explain remedies in simple human language. Never output untranslated Sanskrit terms (Pitta, Kapha, Vata, Ushna, Virya, Rasa, Guna, Vipaka, Prabhav) without a plain-English explanation in the same sentence. Respond ONLY with valid JSON.`;
+    const systemPrompt = `You are a senior Ayurvedic practitioner writing a personalized consultation. Rules:
+1. Write in simple, warm, human English. NEVER use raw Sanskrit (Pitta, Kapha, Vata, Ushna, Virya, Rasa, Guna, Vipaka, Prabhav) without immediately explaining it in plain English in the same sentence.
+2. Every herb must have a UNIQUE explanation tailored to its OWN properties and the user's symptoms — no copy-paste, no template phrases, no repeated sentences across herbs.
+3. Ground every claim in the database facts provided. Do not invent herbs.
+4. Respond with ONLY valid JSON. No markdown, no commentary.`;
 
-    const userMessage = `Symptoms: ${symptoms}${location ? `\nLocation: ${location}` : ""}
+    const userMessage = `The user reports: "${symptoms}"${location ? `\nLocation: ${location}` : ""}
 
-Matched conditions from database:
+=== MATCHED CONDITIONS (from verified database) ===
 ${diseaseContext}
 
-Available herbs from database:
+=== CANDIDATE HERBS (from verified database — use ONLY these) ===
 ${herbContext}
 
-Return JSON in this exact shape (use only herbs from the list above):
+=== TASK ===
+Produce a personalized Ayurvedic consultation as JSON in this EXACT shape:
 {
-  "matchedConditions": ["disease names"],
+  "matchedConditions": ["disease names from above"],
   "plants": [
     {
-      "name": "herb name",
-      "reason": "why this herb helps in plain language",
-      "mechanism": "how it works in simple words",
-      "doshaEffect": "which body imbalance it calms, in plain English",
-      "remedy": "how to prepare and take it",
-      "precautions": "safety notes",
-      "confidence": 85
+      "name": "<herb name exactly as listed>",
+      "reason": "1–2 sentences: why THIS herb helps THIS user's symptoms (mention the specific symptom + the matched disease).",
+      "mechanism": "1–2 sentences: how it works in the body, derived from its taste/qualities/potency above, explained in plain English.",
+      "doshaEffect": "Plain-English description of which body imbalance it calms and which it may worsen, derived from its pacify/aggravate fields.",
+      "remedy": "Concrete home preparation: ingredients, dose, frequency, time of day. Use the suggested preparation when present.",
+      "precautions": "Specific safety notes for THIS herb (pregnancy, BP, diabetes, allergies, drug interactions).",
+      "confidence": 70-95
     }
+    // ONE entry per candidate herb — every entry MUST be different
   ],
-  "doshaAnalysis": "plain-language body imbalance analysis",
-  "dietRecommendations": "diet advice",
-  "yogaRecommendations": "yoga advice",
-  "alternatives": ["other herb names"],
-  "disclaimer": "Always consult a qualified Ayurvedic practitioner."
+  "doshaAnalysis": "2–3 sentences explaining, in plain English, which body imbalances are involved based on the user's symptoms and the matched conditions' doshas/prakriti. Example tone: 'Your symptoms point to an imbalance in the body's air/movement energy (causing dryness and restlessness) along with excess heat (causing irritability).'",
+  "prakritiInsight": "1–2 sentences on the user's likely constitutional tendency based on the prakriti field.",
+  "dietRecommendations": "Actionable diet advice as a short paragraph derived from the diet_lifestyle field of the top matched condition. Be specific: foods to favor, foods to avoid, meal timing.",
+  "yogaRecommendations": "Actionable yoga & lifestyle advice as a short paragraph derived from the yoga_therapy field of the top matched condition. Name specific asanas, pranayama, or routines.",
+  "severity": "mild | moderate | severe",
+  "duration": "short-term | chronic",
+  "alternatives": ["other herb names from the candidate list not used above"],
+  "disclaimer": "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only."
 }
 
-Return 6-10 plants. Keep language simple and human-friendly.`;
+Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, doshaEffect, remedy, and precautions — no two herbs should share sentences.`;
 
     let content = "";
     try {
