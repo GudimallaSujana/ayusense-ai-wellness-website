@@ -190,13 +190,14 @@ serve(async (req) => {
     ).join("\n\n");
 
     const herbContext = herbWithDisease.map(({ herb: h, disease: d }) =>
-      `• ${h.name} (for ${d?.disease || "general support"})\n   Calms (pacifies): ${(h.pacify||[]).join(", ") || "n/a"}\n   May worsen: ${(h.aggravate||[]).join(", ") || "n/a"}\n   Taste (rasa): ${(h.rasa||[]).join(", ") || "n/a"}\n   Qualities (guna): ${(h.guna||[]).join(", ") || "n/a"}\n   Potency (virya): ${h.virya || "n/a"}\n   Post-digestion (vipaka): ${h.vipaka || "n/a"}\n   Special action (prabhav): ${(h.prabhav||[]).join(", ") || "n/a"}\n   Suggested preparation: ${d?.formulation || d?.herbal_remedies || "n/a"}`
+      `• ${h.name} (for ${d?.disease || "general support"})\n   Database description: ${h.preview || "n/a"}\n   Related symptoms: ${d?.symptoms || "n/a"}\n   Calms (pacifies): ${(h.pacify||[]).join(", ") || "n/a"}\n   May worsen: ${(h.aggravate||[]).join(", ") || "n/a"}\n   Taste (rasa): ${(h.rasa||[]).join(", ") || "n/a"}\n   Qualities (guna): ${(h.guna||[]).join(", ") || "n/a"}\n   Potency (virya): ${h.virya || "n/a"}\n   Post-digestion (vipaka): ${h.vipaka || "n/a"}\n   Special action (prabhav): ${(h.prabhav||[]).join(", ") || "n/a"}\n   Suggested preparation: ${d?.formulation || d?.herbal_remedies || "n/a"}`
     ).join("\n\n");
 
     const systemPrompt = `You are a senior Ayurvedic practitioner writing a personalized consultation. Rules:
 1. Write in simple, warm, human English. NEVER use raw Sanskrit (Pitta, Kapha, Vata, Ushna, Virya, Rasa, Guna, Vipaka, Prabhav) without immediately explaining it in plain English in the same sentence.
-2. Every herb must have a UNIQUE explanation tailored to its OWN properties and the user's symptoms — no copy-paste, no template phrases, no repeated sentences across herbs.
-3. Ground every claim in the database facts provided. Do not invent herbs.
+2. Every herb must have a UNIQUE explanation tailored to its OWN database description, properties, preparation, and the user's symptoms — no copy-paste, no template phrases, no repeated sentence structure across herbs.
+3. Precautions must be specific to the herb's warming/cooling action, the body imbalance it may worsen, the suggested dose/preparation, and common medicine/pregnancy safety concerns. Never return the same generic precaution for every herb.
+4. Ground every claim in the database facts provided. Do not invent herbs.
 4. Respond with ONLY valid JSON. No markdown, no commentary.`;
 
     const userMessage = `The user reports: "${symptoms}"${location ? `\nLocation: ${location}` : ""}
@@ -214,11 +215,11 @@ Produce a personalized Ayurvedic consultation as JSON in this EXACT shape:
   "plants": [
     {
       "name": "<herb name exactly as listed>",
-      "reason": "1–2 sentences: why THIS herb helps THIS user's symptoms (mention the specific symptom + the matched disease).",
-      "mechanism": "1–2 sentences: how it works in the body, derived from its taste/qualities/potency above, explained in plain English.",
+      "reason": "2–3 lines: why THIS herb helps THIS user's symptoms and matched disease. Mention what makes this herb different from the other herbs.",
+      "mechanism": "2–3 lines: how THIS herb works in the body, derived from its description, taste/qualities/potency/special action above, explained in plain English.",
       "doshaEffect": "Plain-English description of which body imbalance it calms and which it may worsen, derived from its pacify/aggravate fields.",
       "remedy": "Concrete home preparation: ingredients, dose, frequency, time of day. Use the suggested preparation when present.",
-      "precautions": "Specific safety notes for THIS herb (pregnancy, BP, diabetes, allergies, drug interactions).",
+      "precautions": "2–3 specific safety notes for THIS herb based on its warming/cooling nature, what it may worsen, dose, symptoms, and medicine interactions.",
       "confidence": 70-95
     }
     // ONE entry per candidate herb — every entry MUST be different
