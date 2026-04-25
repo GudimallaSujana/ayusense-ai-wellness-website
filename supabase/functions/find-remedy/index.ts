@@ -256,6 +256,15 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
       return `Use ${h.name} as a mild tea or powder, starting with a small dose after food and adjusting only with practitioner guidance.`;
     };
 
+    const roleFor = (h: any) => {
+      const profile = `${h.preview || ""} ${(h.prabhav || []).join(" ")}`.toLowerCase();
+      if (/ashwagandha|balya|strength|stamina|adaptogen/.test(profile)) return "building stress resilience, restoring strength, and supporting the nervous system when fatigue comes with anxiety or poor sleep";
+      if (/brahmi|medhya|memory|focus|concentration|brain/.test(profile)) return "calming the mind while supporting focus and memory, especially when anxiety comes with lack of concentration";
+      if (/tulsi|respiratory|immunity|kasahara|queen of herbs/.test(profile)) return "supporting immunity and breath while helping the body adapt to stress, especially when stress affects energy and resistance";
+      if (/jatamansi|nervine|sleep|nidra|calms the mind/.test(profile)) return "settling nervous restlessness and supporting deeper sleep when anxiety feels agitating";
+      return "matching the symptom pattern through its recorded database actions and body-balancing properties";
+    };
+
     const bestRelatedDisease = (h: any) => {
       const herbName = h.name.toLowerCase();
       return contextDiseases.find((d: any) => String(d.formulation || "").toLowerCase().includes(herbName))
@@ -277,7 +286,12 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
       if (aggravates.length) notes.push(`Because it may increase ${explainDoshaList(aggravates)}, reduce or stop it if those symptoms become stronger.`);
       if (/blood pressure|hypertension|rapid heartbeat|heart|salt/.test(conditionText)) notes.push(`If you take blood-pressure or heart medicines, use ${h.name} only after medical advice because it may change how your body responds to treatment.`);
       if (/diabetes|sugar|frequent urination/.test(conditionText)) notes.push(`If you use diabetes medicines, monitor sugar levels closely because herbal remedies can change appetite, digestion, or glucose response.`);
-      if (/sleep|insomnia|anxiety|stress|fatigue/.test(conditionText)) notes.push(`For stress, sleep, or fatigue, avoid combining it with sedatives, alcohol, or multiple calming herbs unless a clinician approves it.`);
+      const profile = `${h.name} ${h.preview || ""} ${(h.prabhav || []).join(" ")}`.toLowerCase();
+      if (/ashwagandha/.test(profile)) notes.push("Because Ashwagandha is strengthening and warming, avoid it in untreated overactive thyroid, autoimmune flare-ups, feverish states, or when sedative medicines are being used without supervision.");
+      else if (/brahmi/.test(profile)) notes.push("Because Brahmi is calming and cooling, start low if you feel drowsy, have slow digestion, or already take sleep, anxiety, or seizure medicines.");
+      else if (/tulsi/.test(profile)) notes.push("Because Tulsi is warming and can affect bleeding tendency in some people, use caution with blood thinners, before surgery, or if acidity worsens.");
+      else if (/jatamansi/.test(profile)) notes.push("Because Jatamansi is a strong calming nervine, avoid combining it with alcohol, sedatives, sleep medicines, or heavy machinery use.");
+      else if (/sleep|insomnia|anxiety|stress|fatigue/.test(conditionText)) notes.push(`For stress, sleep, or fatigue, avoid combining ${h.name} with sedatives, alcohol, or multiple calming herbs unless a clinician approves it.`);
       notes.push(`Avoid during pregnancy, breastfeeding, before surgery, or with prescription medicines unless a qualified practitioner confirms it is safe for you.`);
       return [...new Set(notes)].slice(0, 3).join(" ");
     };
@@ -296,7 +310,7 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
       const profileSentence = description ? `The database describes it as ${description.replace(new RegExp(`^${h.name}\\s*(\\([^)]*\\))?\\s+is\\s+`, "i"), "").replace(/\.$/, "")}.` : `${h.name} is recorded in the database for this condition.`;
       return {
         name: h.name,
-        reason: `${h.name} fits ${related?.disease || "your symptoms"} because the matched database symptoms include ${focus || "the symptom pattern you described"}. ${profileSentence} This gives it a different role from the other herbs in this recommendation list.`,
+        reason: `${h.name} fits ${related?.disease || "your symptoms"} because the matched database symptoms include ${focus || "the symptom pattern you described"}. ${profileSentence} Its specific role here is ${roleFor(h)}.`,
         mechanism: `${h.name} works through ${tasteLine}, along with ${qualityLine} and a ${viryaLine}. ${specialActions ? `Its special traditional actions ${specialActions}, which explains why it is suited to this symptom pattern.` : `These properties explain how it supports the body in this symptom pattern.`}`,
         doshaEffect: pacifies.length || aggravates.length
           ? `Helps calm ${explainDoshaList(pacifies) || "general imbalance"}${aggravates.length ? `; may slightly increase ${explainDoshaList(aggravates)} if overused` : ""}.`
