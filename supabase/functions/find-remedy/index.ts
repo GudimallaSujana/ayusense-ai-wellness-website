@@ -237,35 +237,61 @@ Produce a personalized Ayurvedic consultation as JSON in this EXACT shape:
 Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, doshaEffect, remedy, and precautions — no two herbs should share sentences.`;
 
     // Helpers to build UNIQUE per-herb DB-grounded content (used both as AI fallback and to backfill missing AI fields)
-    const plainDosha = (d: string) => {
-      const map: Record<string, string> = {
-        vata: "air/movement energy (dryness, anxiety, restlessness)",
-        pitta: "heat/transformation energy (inflammation, acidity, irritability)",
-        kapha: "earth/water energy (heaviness, mucus, sluggishness)",
-      };
-      return map[d.toLowerCase().trim()] || d;
-    };
+    const plainDosha = (d: string) => doshaPlain[d.toLowerCase().trim()] || d;
     const explainDoshaList = (arr: string[]) =>
       arr.filter(Boolean).map(plainDosha).join(" and ");
+
+    const symptomFocus = (related: any) => String(related?.symptoms || symptoms)
+      .split(/[,.;]/)
+      .map((s: string) => s.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(", ");
+
+    const preparationFor = (h: any, related: any) => {
+      const formulation = String(related?.formulation || "").trim();
+      if (formulation && formulation.toLowerCase() !== "none specific") return formulation;
+      return `Use ${h.name} as a mild tea or powder, starting with a small dose after food and adjusting only with practitioner guidance.`;
+    };
+
+    const precautionsFor = (h: any, related: any, userSymptoms: string) => {
+      const aggravates = (h.aggravate || []).filter(Boolean);
+      const virya = String(h.virya || "").toLowerCase();
+      const conditionText = `${related?.disease || ""} ${related?.symptoms || ""} ${userSymptoms}`.toLowerCase();
+      const notes: string[] = [];
+      if (virya.includes("ush") || virya.includes("hot")) {
+        notes.push(`${h.name} has a warming action, so avoid high doses if you already have acidity, burning sensation, heat rashes, mouth ulcers, or strong heat-related irritability.`);
+      } else if (virya.includes("sheet") || virya.includes("cold")) {
+        notes.push(`${h.name} has a cooling action, so use carefully if your main issue is heavy mucus, weak digestion, coldness, or sluggishness.`);
+      }
+      if (aggravates.length) notes.push(`Because it may increase ${explainDoshaList(aggravates)}, reduce or stop it if those symptoms become stronger.`);
+      if (/blood pressure|hypertension|rapid heartbeat|heart|salt/.test(conditionText)) notes.push(`If you take blood-pressure or heart medicines, use ${h.name} only after medical advice because it may change how your body responds to treatment.`);
+      if (/diabetes|sugar|frequent urination/.test(conditionText)) notes.push(`If you use diabetes medicines, monitor sugar levels closely because herbal remedies can change appetite, digestion, or glucose response.`);
+      if (/sleep|insomnia|anxiety|stress|fatigue/.test(conditionText)) notes.push(`For stress, sleep, or fatigue, avoid combining it with sedatives, alcohol, or multiple calming herbs unless a clinician approves it.`);
+      notes.push(`Avoid during pregnancy, breastfeeding, before surgery, or with prescription medicines unless a qualified practitioner confirms it is safe for you.`);
+      return [...new Set(notes)].slice(0, 3).join(" ");
+    };
 
     const buildDbPlant = (h: any, related: any, index: number) => {
       const pacifies = (h.pacify || []).filter(Boolean);
       const aggravates = (h.aggravate || []).filter(Boolean);
       const tastes = (h.rasa || []).filter(Boolean);
       const qualities = (h.guna || []).filter(Boolean);
-      const symptomLine = related?.symptoms ? `which often shows up as ${String(related.symptoms).toLowerCase().split(/[,.;]/)[0].trim()}` : "matching your description";
-      const tasteLine = tastes.length ? `Its ${tastes.join(", ").toLowerCase()} taste` : "Its natural properties";
-      const qualityLine = qualities.length ? ` and ${qualities.join(", ").toLowerCase()} quality` : "";
-      const viryaLine = h.virya ? ` give it a ${String(h.virya).toLowerCase().includes("ush") || String(h.virya).toLowerCase().includes("hot") ? "warming" : "cooling"} action in the body` : "";
+      const specialActions = explainList(h.prabhav, prabhavPlain);
+      const tasteLine = explainList(tastes, rasaPlain) || "its recorded herbal taste profile";
+      const qualityLine = explainList(qualities, gunaPlain) || "its recorded physical qualities";
+      const viryaLine = h.virya ? `${String(h.virya).toLowerCase().includes("ush") || String(h.virya).toLowerCase().includes("hot") ? "warming" : "cooling"} body action` : "balanced action";
+      const focus = symptomFocus(related);
+      const description = String(h.preview || "").replace(/^.+?\)\s*is\s*/i, "").replace(/^.+?\s+is\s*/i, "");
       return {
         name: h.name,
-        reason: `${h.name} is traditionally chosen for ${related?.disease || "your symptoms"}, ${symptomLine}. It directly addresses the imbalance suggested by what you described.`,
-        mechanism: `${tasteLine}${qualityLine}${viryaLine}, helping the body restore balance gradually.`,
+        reason: `${h.name} fits ${related?.disease || "your symptoms"} because your complaint connects with ${focus || "the symptom pattern in the database"}. ${description || `${h.name} is recorded in the database for this condition`}, so it is recommended here for a plant-specific role rather than as a generic stress herb.`,
+        mechanism: `${h.name} works through ${tasteLine}, along with ${qualityLine} and a ${viryaLine}. ${specialActions ? `Its special traditional actions ${specialActions}, which explains why it is suited to this symptom pattern.` : `These properties explain how it supports the body in this symptom pattern.`}`,
         doshaEffect: pacifies.length || aggravates.length
           ? `Helps calm ${explainDoshaList(pacifies) || "general imbalance"}${aggravates.length ? `; may slightly increase ${explainDoshaList(aggravates)} if overused` : ""}.`
           : `Generally balancing for the body when used in moderation.`,
-        remedy: related?.formulation || related?.herbal_remedies || `Take ${h.name} as a warm tea or powder (¼–½ tsp) once or twice daily after meals, ideally under guidance.`,
-        precautions: `Avoid ${h.name} during pregnancy, breastfeeding, or alongside prescription medicines without consulting a practitioner.${aggravates.length ? ` People with strong ${explainDoshaList(aggravates)} should use it sparingly.` : ""}`,
+        remedy: preparationFor(h, related),
+        precautions: precautionsFor(h, related, String(symptoms)),
         confidence: Math.max(70, 92 - index * 2),
         verified: true,
       };
