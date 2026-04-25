@@ -326,8 +326,7 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
     } catch (aiErr) {
       console.error("AI gateway failed, using database fallback:", aiErr);
       const fallbackPlants = candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-        const related = contextDiseases.find((d: any) => [d.ayurvedic_herbs, d.herbal_remedies, d.formulation].some((field) => String(field || "").toLowerCase().includes(h.name.toLowerCase()))) || primaryDisease;
-        return buildDbPlant(h, related, index);
+        return buildDbPlant(h, bestRelatedDisease(h), index);
       });
       return new Response(JSON.stringify({
         matchedConditions: contextDiseases.slice(0, 12).map((d: any) => d.disease),
@@ -358,8 +357,7 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
     const existingPlants = Array.isArray(parsed.plants) ? parsed.plants : [];
     const dbPlantsByName = new Map(
       candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-        const related = contextDiseases.find((d: any) => [d.ayurvedic_herbs, d.herbal_remedies, d.formulation].some((field) => String(field || "").toLowerCase().includes(h.name.toLowerCase()))) || primaryDisease;
-        return [h.name.toLowerCase(), buildDbPlant(h, related, index)];
+        return [h.name.toLowerCase(), buildDbPlant(h, bestRelatedDisease(h), index)];
       })
     );
 
