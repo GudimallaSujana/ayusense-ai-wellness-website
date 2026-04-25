@@ -258,10 +258,15 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
 
     const roleFor = (h: any) => {
       const profile = `${h.preview || ""} ${(h.prabhav || []).join(" ")}`.toLowerCase();
-      if (/ashwagandha|balya|strength|stamina|adaptogen/.test(profile)) return "building stress resilience, restoring strength, and supporting the nervous system when fatigue comes with anxiety or poor sleep";
-      if (/brahmi|medhya|memory|focus|concentration|brain/.test(profile)) return "calming the mind while supporting focus and memory, especially when anxiety comes with lack of concentration";
-      if (/tulsi|respiratory|immunity|kasahara|queen of herbs/.test(profile)) return "supporting immunity and breath while helping the body adapt to stress, especially when stress affects energy and resistance";
-      if (/jatamansi|nervine|sleep|nidra|calms the mind/.test(profile)) return "settling nervous restlessness and supporting deeper sleep when anxiety feels agitating";
+      const name = String(h.name || "").toLowerCase();
+      if (name.includes("ashwagandha")) return "building stress resilience, restoring strength, and supporting the nervous system when fatigue comes with anxiety or poor sleep";
+      if (name.includes("brahmi")) return "calming the mind while supporting focus and memory, especially when anxiety comes with lack of concentration";
+      if (name.includes("tulsi")) return "supporting immunity and breath while helping the body adapt to stress, especially when stress affects energy and resistance";
+      if (name.includes("jatamansi")) return "settling nervous restlessness and supporting deeper sleep when anxiety feels agitating";
+      if (/balya|strength|stamina|adaptogen/.test(profile)) return "building resilience and strength when symptoms include fatigue or stress overload";
+      if (/medhya|memory|focus|concentration|brain/.test(profile)) return "supporting calm, focus, and clearer mental function";
+      if (/respiratory|immunity|kasahara|queen of herbs/.test(profile)) return "supporting breath, immunity, and stress adaptation";
+      if (/nervine|sleep|nidra|calms the mind/.test(profile)) return "settling nervous restlessness and supporting sleep";
       return "matching the symptom pattern through its recorded database actions and body-balancing properties";
     };
 
