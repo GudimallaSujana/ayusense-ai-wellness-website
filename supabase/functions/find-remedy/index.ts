@@ -192,29 +192,72 @@ Produce a personalized Ayurvedic consultation as JSON in this EXACT shape:
 
 Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, doshaEffect, remedy, and precautions — no two herbs should share sentences.`;
 
+    // Helpers to build UNIQUE per-herb DB-grounded content (used both as AI fallback and to backfill missing AI fields)
+    const plainDosha = (d: string) => {
+      const map: Record<string, string> = {
+        vata: "the body's air/movement energy (linked to dryness, anxiety, restlessness)",
+        pitta: "the body's heat/transformation energy (linked to inflammation, acidity, irritability)",
+        kapha: "the body's earth/water energy (linked to heaviness, mucus, sluggishness)",
+      };
+      return map[d.toLowerCase().trim()] || d;
+    };
+    const explainDoshaList = (arr: string[]) =>
+      arr.filter(Boolean).map(plainDosha).join(" and ");
+
+    const buildDbPlant = (h: any, related: any, index: number) => {
+      const pacifies = (h.pacify || []).filter(Boolean);
+      const aggravates = (h.aggravate || []).filter(Boolean);
+      const tastes = (h.rasa || []).filter(Boolean);
+      const qualities = (h.guna || []).filter(Boolean);
+      const symptomLine = related?.symptoms ? `which often shows up as ${String(related.symptoms).toLowerCase().split(/[,.;]/)[0].trim()}` : "matching your description";
+      const tasteLine = tastes.length ? `Its ${tastes.join(", ").toLowerCase()} taste` : "Its natural properties";
+      const qualityLine = qualities.length ? ` and ${qualities.join(", ").toLowerCase()} quality` : "";
+      const viryaLine = h.virya ? ` give it a ${String(h.virya).toLowerCase().includes("ush") || String(h.virya).toLowerCase().includes("hot") ? "warming" : "cooling"} action in the body` : "";
+      return {
+        name: h.name,
+        reason: `${h.name} is traditionally chosen for ${related?.disease || "your symptoms"}, ${symptomLine}. It directly addresses the imbalance suggested by what you described.`,
+        mechanism: `${tasteLine}${qualityLine}${viryaLine}, helping the body restore balance gradually.`,
+        doshaEffect: pacifies.length || aggravates.length
+          ? `Helps calm ${explainDoshaList(pacifies) || "general imbalance"}${aggravates.length ? `; may slightly increase ${explainDoshaList(aggravates)} if overused` : ""}.`
+          : `Generally balancing for the body when used in moderation.`,
+        remedy: related?.formulation || related?.herbal_remedies || `Take ${h.name} as a warm tea or powder (¼–½ tsp) once or twice daily after meals, ideally under guidance.`,
+        precautions: `Avoid ${h.name} during pregnancy, breastfeeding, or alongside prescription medicines without consulting a practitioner.${aggravates.length ? ` People with strong ${explainDoshaList(aggravates)} should use it sparingly.` : ""}`,
+        confidence: Math.max(70, 92 - index * 2),
+        verified: true,
+      };
+    };
+
+    const buildDbDoshaAnalysis = () => {
+      const allDoshas = [...new Set(slimDiseases.flatMap((d: any) => String(d.doshas || "").split(/[,;/&]+/).map((x: string) => x.trim()).filter(Boolean)))];
+      if (allDoshas.length === 0) return "Your symptoms suggest a general imbalance that should be addressed gently with diet, herbs, and rest.";
+      return `Based on your symptoms, this condition is linked to an imbalance in ${explainDoshaList(allDoshas)}. Restoring this balance through the recommended herbs, diet, and lifestyle is the focus of the suggestions below.`;
+    };
+    const buildDbPrakriti = () => {
+      const p = slimDiseases.map((d: any) => d.prakriti).filter(Boolean)[0];
+      return p ? `People with a ${String(p).toLowerCase()} constitution tend to be more prone to this kind of imbalance, so gentle, consistent care works best.` : "";
+    };
+    const buildDbDiet = () => slimDiseases.map((d: any) => d.diet_lifestyle).filter(Boolean)[0] || "Favor warm, freshly cooked, easily digestible meals. Avoid cold, oily, processed, and heavy foods. Eat at regular times and stay hydrated with warm water.";
+    const buildDbYoga = () => slimDiseases.map((d: any) => d.yoga_therapy).filter(Boolean)[0] || "Practice gentle yoga (Sukhasana, Balasana, Shavasana), slow breathing (Anulom-Vilom, Bhramari), and 10 minutes of daily meditation to calm the nervous system.";
+
     let content = "";
     try {
       content = await callAI(systemPrompt, userMessage);
     } catch (aiErr) {
       console.error("AI gateway failed, using database fallback:", aiErr);
       const fallbackPlants = candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-        const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || contextDiseases[0];
-        return {
-          name: h.name,
-          reason: `Recommended from database match for ${related?.disease || "your symptoms"}.`,
-          mechanism: `Taste: ${(h.rasa || []).join(", ") || "n/a"}; warming or cooling effect: ${h.virya || "n/a"}.`,
-          doshaEffect: `May help calm: ${(h.pacify || []).join(", ") || "n/a"}. May worsen: ${(h.aggravate || []).join(", ") || "n/a"}.`,
-          remedy: related?.formulation || related?.herbal_remedies || "Use under guidance from a qualified practitioner.",
-          precautions: "Avoid during pregnancy, allergies, or with prescription medicines without guidance.",
-          confidence: Math.max(68, 88 - index * 2),
-          verified: true,
-        };
+        const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || primaryDisease;
+        return buildDbPlant(h, related, index);
       });
       return new Response(JSON.stringify({
         matchedConditions: contextDiseases.slice(0, 12).map((d: any) => d.disease),
         plants: fallbackPlants,
-        alternatives: candidateHerbs.slice(0, 12).map((h: any) => h.name),
-        doshaAnalysis: "Results based on closest matching database records.",
+        alternatives: candidateHerbs.slice(0, 12).map((h: any) => h.name).filter((n: string) => !fallbackPlants.some(p => p.name === n)),
+        doshaAnalysis: buildDbDoshaAnalysis(),
+        prakritiInsight: buildDbPrakriti(),
+        dietRecommendations: buildDbDiet(),
+        yogaRecommendations: buildDbYoga(),
+        severity: primaryDisease?.severity || "moderate",
+        duration: primaryDisease?.duration || "",
         disclaimer: "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only.",
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -232,37 +275,51 @@ Return 6–10 plants. Every plant must have its OWN unique reason, mechanism, do
     parsed.matchedConditions = [...new Set([...aiConditions, ...verifiedConditionNames])].slice(0, 12);
 
     const existingPlants = Array.isArray(parsed.plants) ? parsed.plants : [];
-    const fallbackPlants = candidateHerbs.slice(0, 10).map((h: any, index: number) => {
-      const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || contextDiseases[0];
+    const dbPlantsByName = new Map(
+      candidateHerbs.slice(0, 10).map((h: any, index: number) => {
+        const related = contextDiseases.find((d: any) => (d.ayurvedic_herbs || "").toLowerCase().includes(h.name.toLowerCase())) || primaryDisease;
+        return [h.name.toLowerCase(), buildDbPlant(h, related, index)];
+      })
+    );
+
+    // Merge: prefer AI text, but ensure every field is filled from DB if AI omitted/duplicated it
+    const seenSentences = new Set<string>();
+    const dedupe = (text: string, fallback: string) => {
+      const key = (text || "").trim().toLowerCase();
+      if (!key || seenSentences.has(key)) return fallback;
+      seenSentences.add(key);
+      return text;
+    };
+
+    const mergedPlants = uniqueByName([...existingPlants, ...dbPlantsByName.values()]).slice(0, 10).map((p: any, idx: number) => {
+      const matchedHerb = findHerbByName(herbRows, p.name || "");
+      const dbVersion = matchedHerb ? dbPlantsByName.get(matchedHerb.name.toLowerCase()) : null;
+      const base = dbVersion || p;
       return {
-        name: h.name,
-        reason: `Recommended from database match for ${related?.disease || "your symptoms"}.`,
-        mechanism: `Taste: ${(h.rasa || []).join(", ") || "n/a"}; effect: ${h.virya || "n/a"}.`,
-        doshaEffect: `May help calm: ${(h.pacify || []).join(", ") || "n/a"}.`,
-        remedy: related?.formulation || related?.herbal_remedies || "Use under practitioner guidance.",
-        precautions: "Avoid self-medication during pregnancy or with prescription medicines.",
-        confidence: Math.max(68, 88 - index * 2),
-        verified: true,
+        name: matchedHerb?.name || p.name,
+        reason: dedupe(p.reason, base.reason),
+        mechanism: dedupe(p.mechanism, base.mechanism),
+        doshaEffect: dedupe(p.doshaEffect, base.doshaEffect),
+        remedy: dedupe(p.remedy, base.remedy),
+        precautions: dedupe(p.precautions, base.precautions),
+        confidence: typeof p.confidence === "number" ? p.confidence : (base.confidence || Math.max(70, 92 - idx * 2)),
+        verified: !!matchedHerb,
       };
     });
-
-    parsed.plants = uniqueByName([...existingPlants, ...fallbackPlants]).slice(0, 10).map((p: any) => {
-      const matchedHerb = findHerbByName(herbRows, p.name || "");
-      if (matchedHerb) {
-        return {
-          ...p,
-          name: matchedHerb.name,
-          verified: true,
-          doshaEffect: p.doshaEffect || `May help calm: ${(matchedHerb.pacify||[]).join(", ") || "n/a"}.`,
-        };
-      }
-      return { ...p, verified: false };
-    });
+    parsed.plants = mergedPlants;
 
     parsed.alternatives = [...new Set([
       ...(Array.isArray(parsed.alternatives) ? parsed.alternatives : []),
       ...candidateHerbs.map((h: any) => h.name),
     ])].filter((name) => !parsed.plants.some((p: any) => p.name === name)).slice(0, 12);
+
+    // Always backfill the consultation sections from DB if AI omitted them
+    if (!parsed.doshaAnalysis || parsed.doshaAnalysis.length < 30) parsed.doshaAnalysis = buildDbDoshaAnalysis();
+    if (!parsed.prakritiInsight) parsed.prakritiInsight = buildDbPrakriti();
+    if (!parsed.dietRecommendations || parsed.dietRecommendations.length < 20) parsed.dietRecommendations = buildDbDiet();
+    if (!parsed.yogaRecommendations || parsed.yogaRecommendations.length < 20) parsed.yogaRecommendations = buildDbYoga();
+    if (!parsed.severity && primaryDisease?.severity) parsed.severity = primaryDisease.severity;
+    if (!parsed.duration && primaryDisease?.duration) parsed.duration = primaryDisease.duration;
 
     parsed.disclaimer = parsed.disclaimer || "Always consult a qualified Ayurvedic practitioner. This is for educational purposes only.";
 
