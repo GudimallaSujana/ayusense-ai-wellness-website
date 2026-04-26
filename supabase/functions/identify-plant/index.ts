@@ -13,9 +13,9 @@ serve(async (req) => {
     const { imageBase64 } = await req.json();
     if (!imageBase64) throw new Error("No image provided");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
-    const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
+    const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions";
+    if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -46,7 +46,7 @@ When analyzing a plant image:
 3. Use the EXACT name from the database (case-sensitive match)
 4. If no exact match, use fuzzy matching to find the closest name
 
-You MUST respond in this exact JSON format:
+You MUST respond with valid compact JSON only. Do not use markdown fences. Use this exact JSON format:
 {
   "plantName": "Exact name from database list (e.g., Tulsi, Amla, Ashwagandha)",
   "scientificName": "Latin binomial name",
@@ -77,36 +77,67 @@ You MUST respond in this exact JSON format:
 If you cannot identify the plant, set confidence below 30 and explain what you see.`;
 
     // Step 1: AI identifies the plant
-    const response = await fetch(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Identify this medicinal plant and match it to the database. Use the EXACT herb name from the provided list." },
-              { type: "image_url", image_url: { url: imageBase64 } },
-            ],
-          },
-        ],
-      }),
-    });
+    const freeVisionModels = [
+      "google/gemma-4-31b-it:free",
+      "google/gemma-4-26b-a4b-it:free",
+      "nvidia/nemotron-nano-12b-v2-vl:free",
+      "google/gemma-3-27b-it:free",
+      "google/gemma-3-12b-it:free",
+      "google/gemma-3-4b-it:free",
+    ];
+
+    let response: Response | null = null;
+    let lastError = "";
+    let data: any = null;
+    let content = "";
+
+    for (const model of freeVisionModels) {
+      response = await fetch(AI_GATEWAY_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AI_GATEWAY_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://lovable.dev",
+          "X-Title": "AyuSense",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Identify this medicinal plant and match it to the database. Use the EXACT herb name from the provided list." },
+                { type: "image_url", image_url: { url: imageBase64 } },
+              ],
+            },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 4096,
+        }),
+      });
+
+      if (response.ok) {
+        data = await response.clone().json();
+        content = data.choices?.[0]?.message?.content || "";
+        if (content.trim()) break;
+        lastError = `Empty AI response from ${model}`;
+        response = null;
+        continue;
+      }
+
+      lastError = await response.text();
+      if (![402, 404, 429, 500, 502, 503, 504].includes(response.status)) break;
+    }
+
+    if (!response) throw new Error("AI gateway did not respond");
 
     if (!response.ok) {
       const status = response.status;
-      if (status === 429) return new Response(JSON.stringify({ error: "Rate limited. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (status === 402) return new Response(JSON.stringify({ error: "Service credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI gateway error: ${status}`);
+      if (status === 429) return new Response(JSON.stringify({ error: "Free AI models are busy. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (status === 402) return new Response(JSON.stringify({ error: "The free AI provider rejected this request. Please try again later." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw new Error(`AI gateway error: ${status}${lastError ? ` - ${lastError}` : ""}`);
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
 
     let parsed: any;
     try {

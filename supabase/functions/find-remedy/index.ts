@@ -13,9 +13,9 @@ serve(async (req) => {
     const { symptoms, location } = await req.json();
     if (!symptoms) throw new Error("No symptoms provided");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
-    const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
+    const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions";
+    if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -32,22 +32,46 @@ serve(async (req) => {
       .from("herbs")
       .select("name, preview, pacify, aggravate, tridosha, rasa, guna, virya, vipaka, prabhav");
 
+    const symptomTokens = String(symptoms)
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length > 2);
+
+    const cleanText = (value: unknown, max = 280) =>
+      String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+
+    const scoreRecord = (value: string) =>
+      symptomTokens.reduce((score, token) => score + (value.includes(token) ? 1 : 0), 0);
+
+    const relevantDiseases = (diseases || [])
+      .map((d: any) => ({
+        ...d,
+        matchScore: scoreRecord(`${d.disease || ""} ${d.symptoms || ""} ${d.doshas || ""} ${d.ayurvedic_herbs || ""}`.toLowerCase()),
+      }))
+      .sort((a: any, b: any) => b.matchScore - a.matchScore)
+      .slice(0, 12);
+
+    const relevantHerbText = relevantDiseases.map((d: any) => d.ayurvedic_herbs || "").join(" ").toLowerCase();
+    const relevantHerbs = (herbs || [])
+      .filter((h: any) => relevantHerbText.includes(String(h.name || "").toLowerCase()) || scoreRecord(`${h.name || ""} ${h.preview || ""}`.toLowerCase()) > 0)
+      .slice(0, 30);
+
     // Build compact disease context for AI
-    const diseaseContext = (diseases || []).map((d: any) => 
-      `${d.disease}|${d.symptoms}|Herbs:${d.ayurvedic_herbs}|Formulation:${d.formulation}|Doshas:${d.doshas}|Prakriti:${d.prakriti}|Diet:${d.diet_lifestyle}|Yoga:${d.yoga_therapy}|Remedies:${d.herbal_remedies}|Severity:${d.severity}|Duration:${d.duration}|Prevention:${d.prevention}|Complications:${d.complications}|Recommendations:${d.patient_recommendations}`
+    const diseaseContext = relevantDiseases.map((d: any) => 
+      `${cleanText(d.disease, 80)}|${cleanText(d.symptoms)}|Herbs:${cleanText(d.ayurvedic_herbs, 180)}|Formulation:${cleanText(d.formulation, 180)}|Doshas:${cleanText(d.doshas, 100)}|Diet:${cleanText(d.diet_lifestyle, 220)}|Yoga:${cleanText(d.yoga_therapy, 180)}|Remedies:${cleanText(d.herbal_remedies, 220)}|Severity:${cleanText(d.severity, 80)}|Duration:${cleanText(d.duration, 80)}`
     ).join("\n");
 
     // Build herb context
-    const herbContext = (herbs || []).map((h: any) =>
+    const herbContext = relevantHerbs.map((h: any) =>
       `${h.name}|Pacifies:${(h.pacify||[]).join(",")}|Aggravates:${(h.aggravate||[]).join(",")}|Rasa:${(h.rasa||[]).join(",")}|Guna:${(h.guna||[]).join(",")}|Virya:${h.virya}|Vipaka:${h.vipaka}|Prabhav:${(h.prabhav||[]).join(",")}`
     ).join("\n");
 
     const systemPrompt = `You are AyuSense, an AI Ayurvedic remedy advisor. You MUST use ONLY the disease and herb data provided below to generate recommendations. Do NOT invent data.
 
-=== DISEASE DATABASE (${(diseases || []).length} records) ===
+=== RELEVANT DISEASE DATABASE (${relevantDiseases.length} of ${(diseases || []).length} records) ===
 ${diseaseContext}
 
-=== HERB DATABASE (${(herbs || []).length} records) ===
+=== RELEVANT HERB DATABASE (${relevantHerbs.length} of ${(herbs || []).length} records) ===
 ${herbContext}
 
 INSTRUCTIONS:
@@ -58,7 +82,7 @@ INSTRUCTIONS:
 5. NEVER invent diseases or herbs not in the database
 6. If no match found, say so honestly and suggest the closest matches
 
-Respond in this JSON format:
+Respond with valid compact JSON only. Do not use markdown fences. Use this JSON format:
 {
   "matchedConditions": ["Disease names matched from database"],
   "plants": [
@@ -86,30 +110,60 @@ Respond in this JSON format:
       ? `Symptoms: ${symptoms}\nLocation: ${location}\nFind matching diseases and remedies from the database.`
       : `Symptoms: ${symptoms}\nFind matching diseases and remedies from the database.`;
 
-    const response = await fetch(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-      }),
-    });
+    const freeModels = [
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "qwen/qwen3-next-80b-a3b-instruct:free",
+      "openai/gpt-oss-120b:free",
+      "openai/gpt-oss-20b:free",
+      "openrouter/free",
+    ];
+
+    let response: Response | null = null;
+    let lastError = "";
+    let data: any = null;
+    let content = "";
+
+    for (const model of freeModels) {
+      response = await fetch(AI_GATEWAY_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AI_GATEWAY_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://lovable.dev",
+          "X-Title": "AyuSense",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 2500,
+        }),
+      });
+
+      if (response.ok) {
+        data = await response.clone().json();
+        content = data.choices?.[0]?.message?.content || "";
+        if (content.trim()) break;
+        lastError = `Empty AI response from ${model}`;
+        response = null;
+        continue;
+      }
+
+      lastError = await response.text();
+      if (![402, 404, 429, 500, 502, 503, 504].includes(response.status)) break;
+    }
+
+    if (!response) throw new Error("AI gateway did not respond");
 
     if (!response.ok) {
       const status = response.status;
-      if (status === 429) return new Response(JSON.stringify({ error: "Rate limited. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (status === 402) return new Response(JSON.stringify({ error: "Service credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI gateway error: ${status}`);
+      if (status === 429) return new Response(JSON.stringify({ error: "Free AI models are busy. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (status === 402) return new Response(JSON.stringify({ error: "The free AI provider rejected this request. Please try again later." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw new Error(`AI gateway error: ${status}${lastError ? ` - ${lastError}` : ""}`);
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
 
     let parsed: any;
     try {
