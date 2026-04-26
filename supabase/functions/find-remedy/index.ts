@@ -32,22 +32,43 @@ serve(async (req) => {
       .from("herbs")
       .select("name, preview, pacify, aggravate, tridosha, rasa, guna, virya, vipaka, prabhav");
 
+    const symptomTokens = String(symptoms)
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length > 2);
+
+    const scoreRecord = (value: string) =>
+      symptomTokens.reduce((score, token) => score + (value.includes(token) ? 1 : 0), 0);
+
+    const relevantDiseases = (diseases || [])
+      .map((d: any) => ({
+        ...d,
+        matchScore: scoreRecord(`${d.disease || ""} ${d.symptoms || ""} ${d.doshas || ""} ${d.ayurvedic_herbs || ""}`.toLowerCase()),
+      }))
+      .sort((a: any, b: any) => b.matchScore - a.matchScore)
+      .slice(0, 25);
+
+    const relevantHerbText = relevantDiseases.map((d: any) => d.ayurvedic_herbs || "").join(" ").toLowerCase();
+    const relevantHerbs = (herbs || [])
+      .filter((h: any) => relevantHerbText.includes(String(h.name || "").toLowerCase()) || scoreRecord(`${h.name || ""} ${h.preview || ""}`.toLowerCase()) > 0)
+      .slice(0, 45);
+
     // Build compact disease context for AI
-    const diseaseContext = (diseases || []).map((d: any) => 
+    const diseaseContext = relevantDiseases.map((d: any) => 
       `${d.disease}|${d.symptoms}|Herbs:${d.ayurvedic_herbs}|Formulation:${d.formulation}|Doshas:${d.doshas}|Prakriti:${d.prakriti}|Diet:${d.diet_lifestyle}|Yoga:${d.yoga_therapy}|Remedies:${d.herbal_remedies}|Severity:${d.severity}|Duration:${d.duration}|Prevention:${d.prevention}|Complications:${d.complications}|Recommendations:${d.patient_recommendations}`
     ).join("\n");
 
     // Build herb context
-    const herbContext = (herbs || []).map((h: any) =>
+    const herbContext = relevantHerbs.map((h: any) =>
       `${h.name}|Pacifies:${(h.pacify||[]).join(",")}|Aggravates:${(h.aggravate||[]).join(",")}|Rasa:${(h.rasa||[]).join(",")}|Guna:${(h.guna||[]).join(",")}|Virya:${h.virya}|Vipaka:${h.vipaka}|Prabhav:${(h.prabhav||[]).join(",")}`
     ).join("\n");
 
     const systemPrompt = `You are AyuSense, an AI Ayurvedic remedy advisor. You MUST use ONLY the disease and herb data provided below to generate recommendations. Do NOT invent data.
 
-=== DISEASE DATABASE (${(diseases || []).length} records) ===
+=== RELEVANT DISEASE DATABASE (${relevantDiseases.length} of ${(diseases || []).length} records) ===
 ${diseaseContext}
 
-=== HERB DATABASE (${(herbs || []).length} records) ===
+=== RELEVANT HERB DATABASE (${relevantHerbs.length} of ${(herbs || []).length} records) ===
 ${herbContext}
 
 INSTRUCTIONS:
