@@ -13,9 +13,9 @@ serve(async (req) => {
     const { symptoms, location } = await req.json();
     if (!symptoms) throw new Error("No symptoms provided");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
-    const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
+    const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL") || "https://openrouter.ai/api/v1/chat/completions";
+    if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -86,26 +86,45 @@ Respond in this JSON format:
       ? `Symptoms: ${symptoms}\nLocation: ${location}\nFind matching diseases and remedies from the database.`
       : `Symptoms: ${symptoms}\nFind matching diseases and remedies from the database.`;
 
-    const response = await fetch(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-      }),
-    });
+    const freeModels = [
+      "openrouter/free",
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "qwen/qwen3-next-80b-a3b-instruct:free",
+    ];
+
+    let response: Response | null = null;
+    let lastError = "";
+
+    for (const model of freeModels) {
+      response = await fetch(AI_GATEWAY_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AI_GATEWAY_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://lovable.dev",
+          "X-Title": "AyuSense",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+        }),
+      });
+
+      if (response.ok) break;
+      lastError = await response.text();
+      if (![402, 404, 429].includes(response.status)) break;
+    }
+
+    if (!response) throw new Error("AI gateway did not respond");
 
     if (!response.ok) {
       const status = response.status;
-      if (status === 429) return new Response(JSON.stringify({ error: "Rate limited. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (status === 402) return new Response(JSON.stringify({ error: "Service credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI gateway error: ${status}`);
+      if (status === 429) return new Response(JSON.stringify({ error: "Free AI models are busy. Please try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (status === 402) return new Response(JSON.stringify({ error: "The free AI provider rejected this request. Please try again later." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw new Error(`AI gateway error: ${status}${lastError ? ` - ${lastError}` : ""}`);
     }
 
     const data = await response.json();
