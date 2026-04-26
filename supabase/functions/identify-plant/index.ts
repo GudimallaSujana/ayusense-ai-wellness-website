@@ -78,7 +78,9 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
 
     // Step 1: AI identifies the plant
     const freeVisionModels = [
-      "openrouter/free",
+      "google/gemma-4-31b-it:free",
+      "google/gemma-4-26b-a4b-it:free",
+      "nvidia/nemotron-nano-12b-v2-vl:free",
       "google/gemma-3-27b-it:free",
       "google/gemma-3-12b-it:free",
       "google/gemma-3-4b-it:free",
@@ -113,7 +115,7 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
 
       if (response.ok) break;
       lastError = await response.text();
-      if (![402, 404, 429].includes(response.status)) break;
+      if (![402, 404, 429, 500, 502, 503, 504].includes(response.status)) break;
     }
 
     if (!response) throw new Error("AI gateway did not respond");
