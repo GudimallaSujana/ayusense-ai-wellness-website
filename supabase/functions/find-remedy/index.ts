@@ -37,6 +37,9 @@ serve(async (req) => {
       .split(/[^a-z0-9]+/)
       .filter((token) => token.length > 2);
 
+    const cleanText = (value: unknown, max = 280) =>
+      String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+
     const scoreRecord = (value: string) =>
       symptomTokens.reduce((score, token) => score + (value.includes(token) ? 1 : 0), 0);
 
@@ -46,16 +49,16 @@ serve(async (req) => {
         matchScore: scoreRecord(`${d.disease || ""} ${d.symptoms || ""} ${d.doshas || ""} ${d.ayurvedic_herbs || ""}`.toLowerCase()),
       }))
       .sort((a: any, b: any) => b.matchScore - a.matchScore)
-      .slice(0, 25);
+      .slice(0, 12);
 
     const relevantHerbText = relevantDiseases.map((d: any) => d.ayurvedic_herbs || "").join(" ").toLowerCase();
     const relevantHerbs = (herbs || [])
       .filter((h: any) => relevantHerbText.includes(String(h.name || "").toLowerCase()) || scoreRecord(`${h.name || ""} ${h.preview || ""}`.toLowerCase()) > 0)
-      .slice(0, 45);
+      .slice(0, 30);
 
     // Build compact disease context for AI
     const diseaseContext = relevantDiseases.map((d: any) => 
-      `${d.disease}|${d.symptoms}|Herbs:${d.ayurvedic_herbs}|Formulation:${d.formulation}|Doshas:${d.doshas}|Prakriti:${d.prakriti}|Diet:${d.diet_lifestyle}|Yoga:${d.yoga_therapy}|Remedies:${d.herbal_remedies}|Severity:${d.severity}|Duration:${d.duration}|Prevention:${d.prevention}|Complications:${d.complications}|Recommendations:${d.patient_recommendations}`
+      `${cleanText(d.disease, 80)}|${cleanText(d.symptoms)}|Herbs:${cleanText(d.ayurvedic_herbs, 180)}|Formulation:${cleanText(d.formulation, 180)}|Doshas:${cleanText(d.doshas, 100)}|Diet:${cleanText(d.diet_lifestyle, 220)}|Yoga:${cleanText(d.yoga_therapy, 180)}|Remedies:${cleanText(d.herbal_remedies, 220)}|Severity:${cleanText(d.severity, 80)}|Duration:${cleanText(d.duration, 80)}`
     ).join("\n");
 
     // Build herb context
@@ -134,7 +137,7 @@ Respond with valid compact JSON only. Do not use markdown fences. Use this JSON 
             { role: "user", content: userMessage },
           ],
           response_format: { type: "json_object" },
-          max_tokens: 4096,
+          max_tokens: 2500,
         }),
       });
 
