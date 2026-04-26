@@ -92,9 +92,11 @@ Respond in this JSON format:
       headers: {
         Authorization: `Bearer ${AI_GATEWAY_KEY}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://ayusense.lovable.app",
+        "X-Title": "AyuSense",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "mistralai/mistral-7b-instruct",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
