@@ -13,10 +13,9 @@ serve(async (req) => {
     const { symptoms, location } = await req.json();
     if (!symptoms) throw new Error("No symptoms provided");
 
-    const AI_GATEWAY_KEY = Deno.env.get("AI_GATEWAY_KEY");
-    const AI_GATEWAY_URL = Deno.env.get("AI_GATEWAY_URL");
-    if (!AI_GATEWAY_KEY) throw new Error("AI_GATEWAY_KEY not configured");
-    if (!AI_GATEWAY_URL) throw new Error("AI_GATEWAY_URL not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -90,13 +89,11 @@ Respond in this JSON format:
     const response = await fetch(AI_GATEWAY_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${AI_GATEWAY_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://ayusense.lovable.app",
-        "X-Title": "AyuSense",
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.3-70b-instruct:free",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
