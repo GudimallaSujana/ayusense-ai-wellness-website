@@ -87,7 +87,7 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
         "X-Title": "AyuSense",
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.2-11b-vision-instruct:free",
+        model: "google/gemma-3-27b-it:free",
         messages: [
           { role: "system", content: systemPrompt },
           {
