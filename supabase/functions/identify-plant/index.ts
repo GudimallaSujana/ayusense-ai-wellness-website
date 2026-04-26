@@ -46,7 +46,7 @@ When analyzing a plant image:
 3. Use the EXACT name from the database (case-sensitive match)
 4. If no exact match, use fuzzy matching to find the closest name
 
-You MUST respond in this exact JSON format:
+You MUST respond with valid compact JSON only. Do not use markdown fences. Use this exact JSON format:
 {
   "plantName": "Exact name from database list (e.g., Tulsi, Amla, Ashwagandha)",
   "scientificName": "Latin binomial name",
@@ -110,6 +110,8 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
               ],
             },
           ],
+          response_format: { type: "json_object" },
+          max_tokens: 4096,
         }),
       });
 
