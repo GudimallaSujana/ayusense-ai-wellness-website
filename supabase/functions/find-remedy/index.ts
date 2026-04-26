@@ -58,7 +58,7 @@ INSTRUCTIONS:
 5. NEVER invent diseases or herbs not in the database
 6. If no match found, say so honestly and suggest the closest matches
 
-Respond in this JSON format:
+Respond with valid compact JSON only. Do not use markdown fences. Use this JSON format:
 {
   "matchedConditions": ["Disease names matched from database"],
   "plants": [
@@ -87,9 +87,11 @@ Respond in this JSON format:
       : `Symptoms: ${symptoms}\nFind matching diseases and remedies from the database.`;
 
     const freeModels = [
-      "openrouter/free",
       "meta-llama/llama-3.3-70b-instruct:free",
       "qwen/qwen3-next-80b-a3b-instruct:free",
+      "openai/gpt-oss-120b:free",
+      "openai/gpt-oss-20b:free",
+      "openrouter/free",
     ];
 
     let response: Response | null = null;
@@ -110,6 +112,8 @@ Respond in this JSON format:
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage },
           ],
+          response_format: { type: "json_object" },
+          max_tokens: 4096,
         }),
       });
 
