@@ -88,6 +88,8 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
 
     let response: Response | null = null;
     let lastError = "";
+    let data: any = null;
+    let content = "";
 
     for (const model of freeVisionModels) {
       response = await fetch(AI_GATEWAY_URL, {
@@ -115,7 +117,15 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
         }),
       });
 
-      if (response.ok) break;
+      if (response.ok) {
+        data = await response.clone().json();
+        content = data.choices?.[0]?.message?.content || "";
+        if (content.trim()) break;
+        lastError = `Empty AI response from ${model}`;
+        response = null;
+        continue;
+      }
+
       lastError = await response.text();
       if (![402, 404, 429, 500, 502, 503, 504].includes(response.status)) break;
     }
@@ -128,9 +138,6 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
       if (status === 402) return new Response(JSON.stringify({ error: "The free AI provider rejected this request. Please try again later." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       throw new Error(`AI gateway error: ${status}${lastError ? ` - ${lastError}` : ""}`);
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
 
     let parsed: any;
     try {
