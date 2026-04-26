@@ -115,7 +115,7 @@ Respond in this JSON format:
 
       if (response.ok) break;
       lastError = await response.text();
-      if (![402, 404, 429].includes(response.status)) break;
+      if (![402, 404, 429, 500, 502, 503, 504].includes(response.status)) break;
     }
 
     if (!response) throw new Error("AI gateway did not respond");
