@@ -83,9 +83,11 @@ If you cannot identify the plant, set confidence below 30 and explain what you s
       headers: {
         Authorization: `Bearer ${AI_GATEWAY_KEY}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://ayusense.lovable.app",
+        "X-Title": "AyuSense",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "meta-llama/llama-3.2-11b-vision-instruct:free",
         messages: [
           { role: "system", content: systemPrompt },
           {
